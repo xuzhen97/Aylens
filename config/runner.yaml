@@ -1,0 +1,33 @@
+runner:
+  id: dev-runner
+  gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect"
+  token: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
+  heartbeatMs: 10000
+  maxJobs: 1
+  labels:
+    environment: development
+
+plugins:
+  baseDir: "."
+  modules: []
+
+capabilities:
+  browsers: []
+  http: true
+  browserAutomation: false
+
+transports:
+  direct:
+    type: direct
+
+  # Example only:
+  # proxy-us:
+  #   type: http-proxy
+  #   url: "${PROXY_US_URL}"
+  #
+  # proxy-cn:
+  #   type: socks5
+  #   url: "${PROXY_CN_URL}"
+
+browserProfiles: {}
+

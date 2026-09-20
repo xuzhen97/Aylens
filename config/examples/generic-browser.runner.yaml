@@ -1,0 +1,48 @@
+runner:
+  id: windows-generic-01
+  gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect"
+  token: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
+  heartbeatMs: 10000
+  maxJobs: 1
+
+  labels:
+    role: generic-browser
+    environment: development
+
+plugins:
+  baseDir: "."
+  modules:
+    - "./plugins/generic-browser/index.mjs"
+
+capabilities:
+  browsers:
+    - chrome
+  http: true
+  browserAutomation: true
+
+transports:
+  direct:
+    type: direct
+
+  # Optional Runtime-local proxy:
+  # proxy-local:
+  #   type: socks5
+  #   url: "${PROXY_URL}"
+
+browserProfiles:
+  generic-login:
+    browser: chrome
+    mode: launch
+    persistent: true
+
+    # Keep this as a dedicated Aylens automation profile.
+    userDataDir: "D:\\Aylens\\profiles\\generic-login"
+
+    channel: chrome
+    headless: false
+    interactive: true
+    maxConcurrency: 1
+    args: []
+
+    # Optional:
+    # transport: proxy-local

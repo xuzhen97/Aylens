@@ -1,0 +1,28 @@
+version: 1
+
+server:
+  host: 127.0.0.1
+  port: 3000
+  runnerPath: /v1/runners/connect
+
+auth:
+  apiKey: "${AYLENS_API_KEY:-dev-key}"
+  runnerTokens:
+    dev-runner: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
+
+runtimeRegistry:
+  heartbeatTimeoutMs: 30000
+  offlineAfterMs: 60000
+  jobTimeoutMs: 30000
+
+transports:
+  direct:
+    type: direct
+
+providers: {}
+
+routes:
+  default:
+    providers: []
+
+browserProfiles: {}
