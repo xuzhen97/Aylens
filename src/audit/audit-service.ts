@@ -46,6 +46,13 @@ export class InMemoryAuditService {
     record.completedAt = Date.now();
   }
 
+  list(limit = 50): AuditRecord[] {
+    const safeLimit = Math.max(0, Math.min(Math.trunc(limit), 200));
+    return [...this.records.values()]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, safeLimit);
+  }
+
   get(requestId: string): AuditRecord | undefined {
     return this.records.get(requestId);
   }

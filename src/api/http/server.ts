@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { GatewayContext } from "../../app/context.js";
 import { RetrievalError, toErrorPayload } from "../../core/errors.js";
 import { attachRunnerGateway } from "../../runtime/runner-gateway.js";
+import { renderAdminPage, type AdminPage } from "./admin-page.js";
+import { buildAdminOverview, toSafeBrowserProfile } from "./admin-data.js";
 
 const searchSchema = z.object({
   query: z.string().min(1),
@@ -33,6 +35,28 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
 
   app.get("/health", async () => ({ status: "ok" }));
 
+  const sendAdminPage = (page: AdminPage) =>
+    async (_request: unknown, reply: import("fastify").FastifyReply) => {
+      return reply
+        .header("cache-control", "no-store")
+        .header("x-frame-options", "DENY")
+        .header("x-content-type-options", "nosniff")
+        .header(
+          "content-security-policy",
+          "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        )
+        .type("text/html; charset=utf-8")
+        .send(renderAdminPage(page));
+    };
+
+  app.get("/admin", sendAdminPage("overview"));
+  app.get("/admin/", sendAdminPage("overview"));
+  app.get("/admin/runtimes", sendAdminPage("runtimes"));
+  app.get("/admin/providers", sendAdminPage("providers"));
+  app.get("/admin/profiles", sendAdminPage("profiles"));
+  app.get("/admin/audits", sendAdminPage("audits"));
+  app.get("/admin/tester", sendAdminPage("tester"));
+
   app.get("/ready", async () => ({
     status: "ready",
     localRuntime: "online",
@@ -62,6 +86,8 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
 
   app.get("/v1/runtimes", async () => ({ runtimes: context.runtimes.list() }));
 
+  app.get("/v1/admin/overview", async () => buildAdminOverview(context));
+
   app.get<{ Params: { requestId: string } }>("/v1/audit/:requestId", async (request, reply) => {
     const record = context.audit.get(request.params.requestId);
     if (!record) return reply.status(404).send({ error: { code: "NOT_FOUND", message: "Audit record not found" } });
@@ -69,7 +95,7 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
   });
 
   app.get("/v1/browser-profiles", async () => ({
-    profiles: context.browserProfiles.list().map(({ userDataDir: _userDataDir, ...profile }) => profile),
+    profiles: context.browserProfiles.list().map(toSafeBrowserProfile),
   }));
 
   app.addHook("onClose", async () => {
