@@ -125,12 +125,8 @@ dev-key
 plugins/generic-browser/index.mjs
 ```
 
-示例配置：
-
-```text
-config/examples/generic-browser.gateway.yaml
-config/examples/generic-browser.runner.yaml
-```
+默认配置已经挂上它了（`config/aylens.yaml` 的 `providers` + `config/runner.yaml` 的
+`plugins.modules` 与 `generic-login` Profile），所以 `pnpm dev:all` 起来就能用。
 
 真实 Chrome smoke test：
 

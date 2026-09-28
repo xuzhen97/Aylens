@@ -76,15 +76,15 @@ pnpm dev
 pnpm dev:runner
 ```
 
-两边默认都用 `config/aylens.yaml` / `config/runner.yaml`。要换配置就用环境变量：
+两边默认都用 `config/aylens.yaml` / `config/runner.yaml`。要另起一套配置，复制一份再用环境变量指向它：
 
 ```powershell
-$env:AYLENS_CONFIG="./config/examples/generic-browser.gateway.yaml"
-$env:AYLENS_RUNNER_CONFIG="./config/examples/generic-browser.runner.yaml"
+$env:AYLENS_CONFIG="./config/aylens.local.yaml"
+$env:AYLENS_RUNNER_CONFIG="./config/runner.local.yaml"
 ```
 
-注意 `config/examples/generic-browser.runner.yaml` 的 `userDataDir` 写的是
-`D:\Aylens\profiles\generic-login`，与默认的 `./.profiles/generic-login` 不是同一个目录，用之前先按需修改。
+两边要成对改：Gateway 的 `providers.*.runtime.selector` 必须能匹配上 Runner 上报的能力
+（providerType / browser / profile），否则请求会以 `NO_COMPATIBLE_RUNTIME` 失败。
 
 Runner 注册后应上报：
 

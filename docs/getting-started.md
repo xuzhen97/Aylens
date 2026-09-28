@@ -97,29 +97,18 @@ dev-key
 
 ## generic-browser 快速验证
 
-仓库包含：
+这个 Provider 已在默认配置里接好：
 
 ```text
-plugins/generic-browser/index.mjs
-config/examples/generic-browser.gateway.yaml
-config/examples/generic-browser.runner.yaml
+plugins/generic-browser/index.mjs                  插件本身
+config/aylens.yaml                                  providers.generic-browser + routes.default
+config/runner.yaml                                  plugins.modules + generic-login Profile
 ```
 
-Windows PowerShell 窗口 1：
+所以一条命令即可（会自动拉起 Gateway 和 Runner）：
 
 ```powershell
-$env:AYLENS_CONFIG="./config/examples/generic-browser.gateway.yaml"
-$env:AYLENS_API_KEY="dev-key"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-pnpm dev
-```
-
-Windows PowerShell 窗口 2：
-
-```powershell
-$env:AYLENS_RUNNER_CONFIG="./config/examples/generic-browser.runner.yaml"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-pnpm dev:runner
+pnpm dev:all
 ```
 
 确认 Runner：
