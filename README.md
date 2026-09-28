@@ -113,7 +113,7 @@ dev-key
 ```
 
 默认配置已把 generic-browser 验证 Provider 接入 `routes.default`，
-同时 Runner 侧默认加载 `plugins/generic-browser/index.mjs` 与 `generic-login` Profile。
+同时 Runner 侧默认加载内置模块 `builtin:generic-browser` 与 `generic-login` Profile。
 两个进程都起来后，Admin UI 的 Providers 显示 1/1、Runtimes 显示 1/1（Gateway 自身不算节点）；
 只起 Gateway 不起 Runner，/v1/search 会报无可用 Runtime。
 
@@ -124,7 +124,7 @@ dev-key
 仓库提供一个最小 Browser Provider：
 
 ```text
-plugins/generic-browser/index.mjs
+src/providers/generic-browser/index.ts
 ```
 
 默认配置已经挂上它了（`config/aylens.yaml` 的 `providers` + `config/runner.yaml` 的

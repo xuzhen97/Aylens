@@ -102,7 +102,7 @@ describe("generic-browser Gateway/Runner flow", () => {
     });
 
     const loaded = await loadProviderPlugins(
-      ["./plugins/generic-browser/index.mjs"],
+      ["builtin:generic-browser"],
       process.cwd(),
     );
     const providers = new ProviderRegistry();

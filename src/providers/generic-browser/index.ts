@@ -1,15 +1,18 @@
+import type { ProviderDeploymentConfig } from "../../config/schema.js";
+import type { ProviderFactory } from "../types.js";
+
 import { createHash } from "node:crypto";
 
 const WAIT_UNTIL = new Set(["load", "domcontentloaded", "networkidle"]);
 
-function structuredError(code, message, retryable = false, cause) {
-  const error = new Error(message, cause === undefined ? undefined : { cause });
+function structuredError(code: string, message: string, retryable = false, cause?: unknown) {
+  const error = new Error(message, cause === undefined ? undefined : { cause }) as Error & { code: string; retryable: boolean };
   error.code = code;
   error.retryable = retryable;
   return error;
 }
 
-export function normalizeText(value) {
+export function normalizeText(value: unknown): string {
   return String(value ?? "")
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
@@ -18,7 +21,7 @@ export function normalizeText(value) {
     .trim();
 }
 
-export function parseTargetUrl(value) {
+export function parseTargetUrl(value: unknown): string {
   let url;
 
   try {
@@ -44,15 +47,15 @@ export function parseTargetUrl(value) {
   return url.toString();
 }
 
-function boundedNumber(value, fallback, min, max) {
+function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
-function optionsFrom(config) {
+function optionsFrom(config: ProviderDeploymentConfig) {
   const options = config.options ?? {};
-  const waitUntil = WAIT_UNTIL.has(options.waitUntil)
-    ? options.waitUntil
+  const waitUntil = typeof options.waitUntil === "string" && WAIT_UNTIL.has(options.waitUntil)
+    ? options.waitUntil as "load" | "domcontentloaded" | "networkidle"
     : "domcontentloaded";
 
   return {
@@ -75,7 +78,7 @@ function optionsFrom(config) {
   };
 }
 
-function documentId(url) {
+function documentId(url: string): string {
   return `doc_${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
@@ -87,7 +90,7 @@ function cancelledError() {
   );
 }
 
-export const genericBrowserFactory = {
+export const genericBrowserFactory: ProviderFactory = {
   type: "generic-browser",
 
   create(id, config, services) {
@@ -98,6 +101,7 @@ export const genericBrowserFactory = {
       );
     }
 
+    const browser = services.browser;
     const profileId = config.browser?.profile;
     if (!profileId) {
       throw structuredError(
@@ -125,7 +129,7 @@ export const genericBrowserFactory = {
         // its own navigation timeout expired.
         const { signal } = context;
 
-        return services.browser.withProfile(
+        return browser.withProfile(
           profileId,
           context.jobId,
           async ({ context: browserContext }) => {
@@ -140,7 +144,7 @@ export const genericBrowserFactory = {
                   waitUntil: options.waitUntil,
                   timeout: options.timeoutMs,
                   signal,
-                });
+                } as any);
               } catch (error) {
                 if (signal?.aborted) throw cancelledError();
                 throw structuredError(

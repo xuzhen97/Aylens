@@ -44,6 +44,12 @@ generic-login       -> Browser Profile
 
 未来同一种 Provider type 可以创建多个 Provider instance。
 
+### Provider ID、Type 与 Implementation
+
+Provider ID 是 Gateway/Runner 对齐的逻辑实例，Provider Type 是调度和协议能力，Implementation 才是具体代码。不同 Runner 可以为同一个 Provider ID/Type 加载不同实现，只要实现遵守相同 Provider 契约。
+
+官方实现源码统一放在 `src/providers/<implementation>/`，参与 TypeScript 构建；Runner 用 `builtin:<implementation>` 显式选择加载。外部实现仍可通过本地 ESM 路径或 npm package 加载。源码目录结构不决定某个 Runner 必须运行哪些 Provider。
+
 ## Runner Provider Plugin
 
 Runner 不硬编码渠道。它从配置加载本地 ESM module：
@@ -52,7 +58,8 @@ Runner 不硬编码渠道。它从配置加载本地 ESM module：
 plugins:
   baseDir: "."
   modules:
-    - "./plugins/my-provider/index.mjs"
+    - "builtin:generic-browser"
+    - "./external/my-provider/index.mjs"
     - "@my-company/aylens-provider-example"
 ```
 
@@ -99,10 +106,10 @@ Plugin 属于可信本地代码。配置一个 module 等于允许它访问 Runn
 仓库包含：
 
 ```text
-plugins/generic-browser/index.mjs
+src/providers/generic-browser/index.ts
 ```
 
-它不是搜索引擎，而是一个验证 Provider：把 SearchRequest.query 当 URL，通过真实浏览器读取页面。
+它是 Aylens 官方内置 Provider，实现源码参与统一 TypeScript 构建；Runner 通过 `builtin:generic-browser` 选择加载。它不是搜索引擎，而是一个验证 Provider：把 SearchRequest.query 当 URL，通过真实浏览器读取页面。
 
 执行路径：
 
@@ -194,7 +201,7 @@ keepPageOpen: true
 
 1. 实现 SearchProvider；
 2. 暴露 ProviderFactory；
-3. 打包成 Runner Plugin；
+3. 官方实现放入 `src/providers/<implementation>/` 并注册为 builtin，第三方实现则打包成外部 Runner Plugin；
 4. 使用注入的 Transport / BrowserHost；
 5. 在 Gateway YAML 中增加 Provider instance；
 6. 加到 route，或在请求里显式指定 source。

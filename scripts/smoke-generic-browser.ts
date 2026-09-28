@@ -152,7 +152,7 @@ try {
     },
     plugins: {
       baseDir: process.cwd(),
-      modules: ["./plugins/generic-browser/index.mjs"],
+      modules: ["builtin:generic-browser"],
     },
     capabilities: {
       browsers: ["chrome"],

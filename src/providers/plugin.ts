@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ProviderFactory } from "./types.js";
+import genericBrowserPlugin from "./generic-browser/index.js";
 
 export interface ProviderPlugin {
   name: string;
@@ -12,6 +13,10 @@ export interface ProviderPluginLoadResult {
   plugins: ProviderPlugin[];
   factories: ProviderFactory[];
 }
+
+const BUILTIN_PLUGINS = new Map<string, ProviderPlugin>([
+  ["builtin:generic-browser", genericBrowserPlugin],
+]);
 
 function moduleSpecifier(moduleRef: string, baseDir: string): string {
   if (moduleRef.startsWith(".") || isAbsolute(moduleRef)) {
@@ -47,8 +52,9 @@ export async function loadProviderPlugins(
   const factories: ProviderFactory[] = [];
 
   for (const moduleRef of modules) {
-    const imported = await import(moduleSpecifier(moduleRef, baseDir));
-    const exported = imported.default ?? imported.providerPlugin;
+    const builtin = BUILTIN_PLUGINS.get(moduleRef);
+    const imported = builtin ? undefined : await import(moduleSpecifier(moduleRef, baseDir));
+    const exported = builtin ?? imported?.default ?? imported?.providerPlugin;
     const plugin = validatePlugin(exported, moduleRef);
 
     plugins.push(plugin);

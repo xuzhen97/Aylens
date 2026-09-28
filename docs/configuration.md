@@ -57,7 +57,7 @@ routes:
 ```
 
 Gateway 侧不再有 `transports` 与 `browserProfiles` 段：Gateway 不做抓取，因此不持有 Transport 或 Browser Profile。
-`providers.<id>.transport` / `providers.<id>.browser` 只是随任务下发给 Runner 的逻辑提示，Gateway 不校验它们。
+Provider 的 `transport`、`browser` 与 `options` 只存在于 Runner Provider Deployment，不由 Gateway 保存或随任务下发。
 
 ## Runner 基本结构
 
@@ -71,7 +71,8 @@ runner:
 
 plugins:
   baseDir: "."
-  modules: []
+  modules:
+    - "builtin:generic-browser"
 
 capabilities:
   browsers: []

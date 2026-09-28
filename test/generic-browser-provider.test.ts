@@ -7,7 +7,7 @@ import { loadProviderPlugins } from "../src/providers/plugin.js";
 
 async function genericFactory() {
   const loaded = await loadProviderPlugins(
-    ["./plugins/generic-browser/index.mjs"],
+    ["builtin:generic-browser"],
     process.cwd(),
   );
   const factory = loaded.factories.find((candidate) => candidate.type === "generic-browser");

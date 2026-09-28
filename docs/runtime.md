@@ -163,7 +163,7 @@ runner:
 plugins:
   baseDir: "."
   modules:
-    - "./plugins/example-browser/index.mjs"
+    - "builtin:generic-browser"\n    # 也可以加载外部 ESM 路径或 npm package
 
 capabilities:
   browsers:

@@ -100,7 +100,7 @@ dev-key
 这个 Provider 已在默认配置里接好：
 
 ```text
-plugins/generic-browser/index.mjs                  插件本身
+src/providers/generic-browser/index.ts             官方 Provider 源码（构建后由 builtin:generic-browser 加载）
 config/aylens.yaml                                  providers.generic-browser + routes.default
 config/runner.yaml                                  plugins.modules + generic-login Profile
 ```

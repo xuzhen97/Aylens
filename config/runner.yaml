@@ -10,7 +10,7 @@ runner:
 plugins:
   baseDir: "."
   modules:
-    - "./plugins/generic-browser/index.mjs"
+    - "builtin:generic-browser"
 
 capabilities:
   browsers:
