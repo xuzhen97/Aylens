@@ -25,17 +25,22 @@ npm run build
 
 ```text
 12 个测试文件
-27 个测试
+35 个测试
 ```
 
 ## 2. 启动 generic-browser Gateway
 
-Windows PowerShell：
+默认配置 `config/aylens.yaml` 已接入 generic-browser。
+
+需同时启动 Gateway 与 Runner，二者可以一条命令拉起：
 
 ```powershell
-$env:AYLENS_CONFIG="./config/examples/generic-browser.gateway.yaml"
-$env:AYLENS_API_KEY="dev-key"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
+npm run dev:all
+```
+
+分开调试时的单进程命令：
+
+```powershell
 npm run dev
 ```
 
@@ -54,11 +59,11 @@ curl.exe http://127.0.0.1:3000/ready
 
 ## 3. 启动 Windows Runner
 
+默认配置 `config/runner.yaml` 已加载 generic-browser 插件与 `generic-login` profile。
+
 另一个 PowerShell：
 
 ```powershell
-$env:AYLENS_RUNNER_CONFIG="./config/examples/generic-browser.runner.yaml"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
 npm run dev:runner
 ```
 

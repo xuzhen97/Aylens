@@ -91,7 +91,7 @@ http://127.0.0.1:3000/admin
 dev-key
 ```
 
-默认配置没有 Provider，因此 /v1/search 返回成功但空结果，这是预期行为。
+默认配置已接入 generic-browser Provider，因此启动后即可检索。
 
 ## generic-browser 快速验证
 
@@ -99,26 +99,26 @@ dev-key
 
 ```text
 plugins/generic-browser/index.mjs
-config/examples/generic-browser.gateway.yaml
-config/examples/generic-browser.runner.yaml
+config/aylens.yaml
+config/runner.yaml
 ```
 
-Windows PowerShell 窗口 1：
+默认配置已经接好 generic-browser，直接启动即可，无需设置环境变量。
+
+一条命令同时启动 Gateway 与 Runner：
 
 ```powershell
-$env:AYLENS_CONFIG="./config/examples/generic-browser.gateway.yaml"
-$env:AYLENS_API_KEY="dev-key"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-npm run dev
+npm run dev:all
 ```
 
-Windows PowerShell 窗口 2：
+也可以分开两个窗口，便于单独看日志：
 
 ```powershell
-$env:AYLENS_RUNNER_CONFIG="./config/examples/generic-browser.runner.yaml"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-npm run dev:runner
+npm run dev        # 窗口 1：Gateway
+npm run dev:runner # 窗口 2：Runner
 ```
+
+Runner 在 Gateway 就绪前会重试连接（默认每秒一次），两个进程同时启动也不会失败。
 
 确认 Runner：
 

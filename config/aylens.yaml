@@ -9,20 +9,44 @@ auth:
   apiKey: "${AYLENS_API_KEY:-dev-key}"
   runnerTokens:
     dev-runner: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
+    windows-generic-01: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
 
 runtimeRegistry:
   heartbeatTimeoutMs: 30000
   offlineAfterMs: 60000
-  jobTimeoutMs: 30000
+  jobTimeoutMs: 60000
 
 transports:
   direct:
     type: direct
 
-providers: {}
+providers:
+  generic-browser:
+    type: generic-browser
+    enabled: true
+
+    runtime:
+      selector:
+        providerType: generic-browser
+        browser: chrome
+        profile: generic-login
+
+    browser:
+      profile: generic-login
+
+    options:
+      waitUntil: domcontentloaded
+      timeoutMs: 30000
+      extractionTimeoutMs: 10000
+      postLoadDelayMs: 0
+      maxTextChars: 50000
+      snippetChars: 500
+      textSelector: body
+      keepPageOpen: false
 
 routes:
   default:
-    providers: []
+    providers:
+      - generic-browser
 
 browserProfiles: {}

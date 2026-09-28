@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:all": "node scripts/dev-all.mjs",
     "dev:runner": "tsx watch src/runner/index.ts",
     "start": "node dist/src/index.js",
     "start:runner": "node dist/src/runner/index.js",

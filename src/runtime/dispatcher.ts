@@ -15,6 +15,27 @@ export class ExecutionDispatcher {
     private readonly runnerSessions: RunnerSessionManager,
   ) {}
 
+  private async executeWithRuntime(
+    runtimeId: string,
+    execute: () => Promise<RuntimeExecutionResult>,
+  ): Promise<RuntimeExecutionResult> {
+    try {
+      return await execute();
+    } catch (error) {
+      if (error instanceof RetrievalError) {
+        throw new RetrievalError(error.code, error.message, {
+          retryable: error.retryable,
+          details: {
+            ...error.details,
+            runtimeId,
+          },
+          cause: error,
+        });
+      }
+      throw error;
+    }
+  }
+
   async search(
     providerId: string,
     input: SearchRequest,
@@ -37,7 +58,7 @@ export class ExecutionDispatcher {
 
     if ("mode" in target) {
       if (target.mode !== "local") throw new RetrievalError("INTERNAL_ERROR", "Unsupported local runtime mode");
-      return this.localRuntime.execute(execution);
+      return this.executeWithRuntime("local", () => this.localRuntime.execute(execution));
     }
 
     if ("nodeId" in target) {
@@ -45,10 +66,10 @@ export class ExecutionDispatcher {
       if (!runtime || runtime.status === "offline") {
         throw new RetrievalError("RUNTIME_OFFLINE", `Runtime is offline: ${target.nodeId}`, { retryable: true });
       }
-      return this.runnerSessions.execute(runtime.id, execution);
+      return this.executeWithRuntime(runtime.id, () => this.runnerSessions.execute(runtime.id, execution));
     }
 
     const runtime = this.runtimes.select(target.selector);
-    return this.runnerSessions.execute(runtime.id, execution);
+    return this.executeWithRuntime(runtime.id, () => this.runnerSessions.execute(runtime.id, execution));
   }
 }

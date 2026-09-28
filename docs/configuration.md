@@ -14,14 +14,8 @@ Runner：
 config/runner.yaml
 ```
 
-generic-browser 示例：
-
-```text
-config/examples/generic-browser.gateway.yaml
-config/examples/generic-browser.runner.yaml
-```
-
-可通过环境变量覆盖配置文件位置：
+默认配置（`config/aylens.yaml` / `config/runner.yaml`）已接入 generic-browser，
+开箱即用。可通过环境变量覆盖配置文件位置：
 
 ```text
 AYLENS_CONFIG

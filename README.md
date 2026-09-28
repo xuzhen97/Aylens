@@ -99,7 +99,7 @@ http://127.0.0.1:3000/admin
 dev-key
 ```
 
-默认配置没有 Provider，所以 /v1/search 成功返回空结果是正常行为。
+默认配置已接入 generic-browser Provider，启动 `npm run dev` + `npm run dev:runner` 即可检索。
 
 更完整的启动说明见 [docs/getting-started.md](./docs/getting-started.md)。
 
@@ -111,12 +111,8 @@ dev-key
 plugins/generic-browser/index.mjs
 ```
 
-示例配置：
-
-```text
-config/examples/generic-browser.gateway.yaml
-config/examples/generic-browser.runner.yaml
-```
+默认配置（`config/aylens.yaml` / `config/runner.yaml`）已接入 generic-browser，
+直接启动即可，无需环境变量。
 
 真实 Chrome smoke test：
 
@@ -196,7 +192,7 @@ npm run smoke:generic-browser
 
 ```text
 12 个测试文件
-27 个测试
+36 个测试
 ```
 
 详见 [docs/testing.md](./docs/testing.md)。

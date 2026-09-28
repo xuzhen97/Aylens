@@ -1,6 +1,6 @@
 import type { InMemoryAuditService } from "../audit/audit-service.js";
 import type { SearchRequest, SearchResponse } from "../contracts/search.js";
-import { toErrorPayload } from "../core/errors.js";
+import { RetrievalError, toErrorPayload } from "../core/errors.js";
 import type { ExecutionDispatcher } from "../runtime/dispatcher.js";
 import { createId } from "../shared/ids.js";
 import type { ProviderRouter } from "./router.js";
@@ -42,14 +42,19 @@ export class SearchService {
         });
       } catch (error) {
         const payload = toErrorPayload(error);
+        const runtimeId = error instanceof RetrievalError && typeof error.details?.runtimeId === "string"
+          ? error.details.runtimeId
+          : undefined;
         meta[providerId] = {
           status: "failed",
+          ...(runtimeId ? { runtimeId } : {}),
           latencyMs: Date.now() - startedAt,
           resultCount: 0,
           error: payload,
         };
         this.audit.addProviderEvent(requestId, {
           providerId,
+          ...(runtimeId ? { runtimeId } : {}),
           startedAt,
           completedAt: Date.now(),
           status: "failed",

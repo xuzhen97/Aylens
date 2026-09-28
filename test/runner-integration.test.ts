@@ -4,8 +4,57 @@ import { appConfigSchema } from "../src/config/schema.js";
 import { createGatewayContext } from "../src/app/context.js";
 import { buildHttpServer } from "../src/api/http/server.js";
 import { AylensRunner } from "../src/runner/runner.js";
+import { connectWithRetry, maintainConnection } from "../src/runner/connect.js";
 import { runnerConfigSchema } from "../src/runner/config.js";
 import { createRunnerRuntime } from "../src/runner/runtime.js";
+
+describe("connectWithRetry", () => {
+  it("retries until the gateway accepts the connection", async () => {
+    let attempts = 0;
+    const runner = {
+      connect: async () => {
+        attempts += 1;
+        if (attempts < 3) throw new Error("connect ECONNREFUSED 127.0.0.1:3000");
+      },
+    };
+
+    await connectWithRetry(runner, () => false, 1);
+
+    expect(attempts).toBe(3);
+  });
+
+  it("gives up once shutdown has started", async () => {
+    let attempts = 0;
+    let stopping = false;
+    const runner = {
+      connect: async () => {
+        attempts += 1;
+        stopping = true;
+        throw new Error("connect ECONNREFUSED");
+      },
+    };
+
+    await connectWithRetry(runner, () => stopping, 1);
+
+    expect(attempts).toBe(1);
+  });
+
+  it("reconnects after an established gateway connection closes", async () => {
+    let attempts = 0;
+    let stopping = false;
+    const runner = {
+      connect: async () => {
+        attempts += 1;
+        if (attempts === 2) stopping = true;
+      },
+      waitForDisconnect: async () => undefined,
+    };
+
+    await maintainConnection(runner, () => stopping, { retryMs: 1 });
+
+    expect(attempts).toBe(2);
+  });
+});
 
 let app: FastifyInstance | undefined;
 let runner: AylensRunner | undefined;

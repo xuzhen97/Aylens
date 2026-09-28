@@ -18,8 +18,10 @@ function normalizeOs(value: NodeJS.Platform): "windows" | "linux" | "darwin" {
 }
 
 export class AylensRunner {
-  private socket?: WebSocket;
-  private heartbeat?: NodeJS.Timeout;
+  private socket: WebSocket | undefined;
+  private heartbeat: NodeJS.Timeout | undefined;
+  private heartbeatSocket: WebSocket | undefined;
+  private disconnectPromise: Promise<void> = Promise.resolve();
   private activeJobs = 0;
 
   constructor(
@@ -29,12 +31,26 @@ export class AylensRunner {
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      let registered = false;
+      let connectError: Error | undefined;
+      let resolveDisconnect: () => void = () => undefined;
+
+      this.disconnectPromise = new Promise<void>((resolvePromise) => {
+        resolveDisconnect = resolvePromise;
+      });
+
       const socket = new WebSocket(this.config.runner.gatewayUrl, {
         headers: { authorization: `Bearer ${this.config.runner.token}` },
       });
       this.socket = socket;
 
-      socket.once("error", reject);
+      socket.on("error", (error) => {
+        if (!registered) {
+          connectError = error instanceof Error ? error : new Error(String(error));
+          return;
+        }
+        console.error(`Gateway connection error: ${error.message}`);
+      });
 
       socket.on("open", () => {
         socket.send(JSON.stringify(this.registrationMessage()));
@@ -53,8 +69,9 @@ export class AylensRunner {
         const message = parsed.data;
 
         if (message.type === "REGISTERED") {
-          socket.removeListener("error", reject);
-          this.startHeartbeat();
+          if (registered) return;
+          registered = true;
+          this.startHeartbeat(socket);
           resolve();
           return;
         }
@@ -64,14 +81,37 @@ export class AylensRunner {
         }
       });
 
-      socket.on("close", () => {
-        if (this.heartbeat) clearInterval(this.heartbeat);
+      socket.once("close", (code, reason) => {
+        if (this.socket === socket) this.socket = undefined;
+        if (this.heartbeatSocket === socket) {
+          if (this.heartbeat) clearInterval(this.heartbeat);
+          this.heartbeat = undefined;
+          this.heartbeatSocket = undefined;
+        }
+
+        resolveDisconnect();
+
+        if (!registered) {
+          const reasonText = reason.toString();
+          reject(
+            connectError ??
+              new Error(
+                `Gateway connection closed before registration (code=${code}${reasonText ? `, reason=${reasonText}` : ""})`,
+              ),
+          );
+        }
       });
     });
   }
 
+  waitForDisconnect(): Promise<void> {
+    return this.disconnectPromise;
+  }
+
   async close(): Promise<void> {
     if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = undefined;
+    this.heartbeatSocket = undefined;
     this.socket?.close(1000, "runner shutting down");
     await this.runtime.close();
   }
@@ -195,10 +235,11 @@ export class AylensRunner {
     } as const;
   }
 
-  private startHeartbeat(): void {
+  private startHeartbeat(socket: WebSocket): void {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeatSocket = socket;
     this.heartbeat = setInterval(() => {
-      if (this.socket?.readyState !== WebSocket.OPEN) return;
-      this.sendHeartbeat(this.socket);
+      this.sendHeartbeat(socket);
     }, this.config.runner.heartbeatMs);
     this.heartbeat.unref();
   }

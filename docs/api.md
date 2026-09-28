@@ -75,7 +75,7 @@ Authorization: Bearer dev-key
 - limit：可选，最大 100
 - language：可选
 
-默认配置没有 Provider 时，Search 返回成功的空结果，这是故意设计的。
+未配置 Provider（或路由为空）时，Search 返回成功的空结果，这是故意设计的。
 
 ## Providers / Runtimes
 

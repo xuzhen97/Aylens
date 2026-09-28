@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { appConfigSchema } from "../src/config/schema.js";
 import { createGatewayContext } from "../src/app/context.js";
 import type { ProviderFactory } from "../src/providers/types.js";
+import { RetrievalError } from "../src/core/errors.js";
 
 const base = {
   version: 1 as const,
@@ -67,5 +68,50 @@ describe("SearchService", () => {
     expect(response.status).toBe("completed");
     expect(response.items).toHaveLength(1);
     expect(response.meta.providers.fake?.runtimeId).toBe("local");
+  });
+
+  it("returns provider error details and the selected runtime when execution fails", async () => {
+    const config = appConfigSchema.parse({
+      ...base,
+      providers: {
+        failing: { type: "failing", enabled: true, runtime: { mode: "local" }, options: {} },
+      },
+      routes: { default: { providers: ["failing"] } },
+    });
+    const context = createGatewayContext(config);
+
+    const factory: ProviderFactory = {
+      type: "failing",
+      create: (id) => ({
+        id,
+        search: async () => {
+          throw new RetrievalError("CONTENT_UNAVAILABLE", "Fixture content could not be read", {
+            retryable: true,
+          });
+        },
+      }),
+    };
+
+    context.providers.registerFactory(factory);
+    const response = await context.search.search({ query: "https://example.test/failure" });
+
+    expect(response.status).toBe("failed");
+    expect(response.items).toEqual([]);
+    expect(response.meta.providers.failing).toMatchObject({
+      status: "failed",
+      runtimeId: "local",
+      resultCount: 0,
+      error: {
+        code: "CONTENT_UNAVAILABLE",
+        message: "Fixture content could not be read",
+        retryable: true,
+      },
+    });
+    expect(context.audit.get(response.requestId)?.providers[0]).toMatchObject({
+      providerId: "failing",
+      runtimeId: "local",
+      status: "failed",
+      errorCode: "CONTENT_UNAVAILABLE",
+    });
   });
 });

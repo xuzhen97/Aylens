@@ -207,6 +207,18 @@ Admin UI
   -> UI
 ```
 
+如果请求状态为 failed 或 partial，请求测试页会直接显示每个失败 Provider 的：
+
+- Provider ID
+- Runtime ID（如果已经完成 Runtime 选择）
+- 错误码
+- 错误消息
+- retryable
+- latency
+- requestId
+
+因此不会再把 Provider 执行失败显示成笼统的“没有结果”。
+
 ## 安全边界
 
 后台响应不应包含：

@@ -168,6 +168,27 @@ describe("admin UI", () => {
     expect(tester.body).not.toContain('id="runtimeRows"');
   });
 
+  it("renders provider execution diagnostics on the request tester", () => {
+    const tester = renderAdminPage("tester");
+
+    expect(tester).toContain("appendProviderFailures");
+    expect(tester).toContain("Gateway 返回的实际 Provider 错误");
+    expect(tester).toContain("error.code");
+    expect(tester).toContain("meta.runtimeId");
+    expect(tester).toContain("error.retryable");
+    expect(tester).toContain("meta.latencyMs");
+  });
+
+  it("keeps the request tester provider selection across auto-refreshes", () => {
+    const tester = renderAdminPage("tester");
+    // Regression: sourceSelect() previously rebuilt options on every render(),
+    // wiping the user's choice when auto-refresh fired every 5s. The fix caches
+    // the rendered provider keys on the <select> element and restores the prior
+    // value when the options list is unchanged.
+    expect(tester).toMatch(/s\.dataset\.keys/);
+    expect(tester).toMatch(/Array\.from\(s\.options\)\.some/);
+  });
+
   it("supports system, light, and dark themes with a persistent theme preference", () => {
     expect(ADMIN_HTML).toContain('value="system"');
     expect(ADMIN_HTML).toContain('value="light"');
