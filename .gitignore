@@ -9,3 +9,6 @@ coverage/
 # Runner 侧 persistent Chrome 用户数据目录
 .profiles/
 
+
+# Playwright MCP runtime artifacts
+.playwright-mcp/
