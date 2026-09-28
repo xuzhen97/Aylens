@@ -86,7 +86,7 @@ async function rawRegister(
     os: "windows",
     version: "0.1.0",
     labels: {},
-    capabilities: { providerTypes: [], browsers: [], profiles: [], http: true, browserAutomation: false },
+    capabilities: { providerTypes: [], providerIds: [], browsers: [], profiles: [], http: true, browserAutomation: false },
     capacity: { maxJobs: 1, activeJobs: 0 },
     timestamp: Date.now(),
   }));
@@ -204,6 +204,12 @@ describe("Gateway/Runner integration", () => {
         browsers: [],
         http: true,
         browserAutomation: false,
+      },
+      providers: {
+        remoteFixture: {
+          type: "fixture-remote",
+          options: {},
+        },
       },
       transports: {
         direct: { type: "direct" },

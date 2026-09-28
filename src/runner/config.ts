@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import YAML from "yaml";
 import { z } from "zod";
 import { interpolateEnv } from "../config/loader.js";
-import { browserProfileSchema, transportSchema } from "../config/schema.js";
+import { browserProfileSchema, providerDeploymentSchema, transportSchema } from "../config/schema.js";
 
 export const runnerConfigSchema = z.object({
   runner: z.object({
@@ -23,6 +23,7 @@ export const runnerConfigSchema = z.object({
     http: z.boolean().default(true),
     browserAutomation: z.boolean().default(false),
   }),
+  providers: z.record(z.string(), providerDeploymentSchema).default({}),
   transports: z.record(z.string(), transportSchema).default({
     direct: { type: "direct" },
   }),
@@ -43,6 +44,28 @@ export const runnerConfigSchema = z.object({
         path: ["browserProfiles", profileId, "transport"],
         message: `Unknown Runner-local transport: ${profile.transport}`,
       });
+    }
+  }
+
+  for (const [providerId, deployment] of Object.entries(config.providers)) {
+    if (deployment.browser && !(deployment.browser.profile in config.browserProfiles)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["providers", providerId, "browser", "profile"],
+        message: `Unknown Runner-local browser profile: ${deployment.browser.profile}`,
+      });
+    }
+
+    if (deployment.transport) {
+      for (const transportId of [deployment.transport.primary, ...deployment.transport.fallback]) {
+        if (!(transportId in config.transports)) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["providers", providerId, "transport"],
+            message: `Unknown Runner-local transport: ${transportId}`,
+          });
+        }
+      }
     }
   }
 });

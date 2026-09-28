@@ -46,12 +46,53 @@ describe("config", () => {
       server: { host: "127.0.0.1", port: 3000, runnerPath: "/runner" },
       auth: { apiKey: "a", runnerTokens: {} },
       runtimeRegistry: { heartbeatTimeoutMs: 1000, offlineAfterMs: 2000, jobTimeoutMs: 1000 },
-      transports: { direct: { type: "direct" } },
       providers: {},
       routes: { default: { providers: ["missing"] } },
-      browserProfiles: {},
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("requires every provider to declare an explicit Runner target", () => {
+    const baseConfig = {
+      version: 1,
+      server: { host: "127.0.0.1", port: 3000, runnerPath: "/runner" },
+      auth: { apiKey: "a", runnerTokens: {} },
+      runtimeRegistry: { heartbeatTimeoutMs: 1000, offlineAfterMs: 2000, jobTimeoutMs: 1000 },
+      routes: { default: { providers: [] } },
+    };
+
+    const missing = appConfigSchema.safeParse({
+      ...baseConfig,
+      providers: { p: { type: "t" } },
+    });
+    const legacyLocalMode = appConfigSchema.safeParse({
+      ...baseConfig,
+      providers: { p: { type: "t", runtime: { mode: "local" } } },
+    });
+    const runner = appConfigSchema.safeParse({
+      ...baseConfig,
+      providers: { p: { type: "t", runtime: { nodeId: "runner-1" } } },
+    });
+
+    expect(missing.success).toBe(false);
+    expect(legacyLocalMode.success).toBe(false);
+    expect(runner.success).toBe(true);
+  });
+
+  it("keeps Gateway config on the control plane only", () => {
+    const parsed = appConfigSchema.parse({
+      version: 1,
+      server: { host: "127.0.0.1", port: 3000, runnerPath: "/runner" },
+      auth: { apiKey: "a", runnerTokens: {} },
+      runtimeRegistry: { heartbeatTimeoutMs: 1000, offlineAfterMs: 2000, jobTimeoutMs: 1000 },
+      transports: { direct: { type: "direct" } },
+      providers: {},
+      routes: { default: { providers: [] } },
+      browserProfiles: {},
+    });
+
+    expect("transports" in parsed).toBe(false);
+    expect("browserProfiles" in parsed).toBe(false);
   });
 });

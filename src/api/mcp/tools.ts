@@ -26,7 +26,7 @@ export function createMcpTools(context: GatewayContext): McpToolDefinition[] {
     },
     {
       name: "list_runtimes",
-      description: "List currently known local and remote execution runtimes.",
+      description: "List currently connected Runner execution nodes.",
       inputSchema: z.object({}),
       execute: async () => ({ runtimes: context.runtimes.list() }),
     },

@@ -10,7 +10,7 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway，使用 No
 - 统一 SearchRequest / SearchResponse / SearchDocument
 - Provider definition + ProviderFactory
 - Provider Router 与 SearchService
-- Local Runtime 与 Remote Runner
+- Gateway 纯控制面 + 远程 Runner 执行面（**Gateway 不做任何抓取**）
 - Capability-based Runtime Registry
 - Runner WebSocket 协议与 per-runner token
 - Runner Provider Plugin 动态加载
@@ -34,13 +34,15 @@ AI Agent
   -> SearchService
   -> ProviderRouter
   -> ExecutionDispatcher
-  -> Local Runtime / Remote Runner
+  -> Remote Runner
   -> Provider Plugin
   -> Runtime-local Transport / BrowserHost
   -> Internet
 ```
 
-Proxy credential、Chrome Profile、Cookie、Local Storage 等敏感状态保留在拥有它们的 Runtime 本地。
+Proxy credential、Chrome Profile、Cookie、Local Storage 等敏感状态只存在于 Runner。
+Gateway 不访问目标网站、不创建 Transport、不启动 Chrome、不持有登录态；没有在线 Runner 时
+搜索返回明确的“无可用执行节点”错误，不做本地回退。
 
 完整设计见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
@@ -112,7 +114,7 @@ dev-key
 
 默认配置已把 generic-browser 验证 Provider 接入 `routes.default`，
 同时 Runner 侧默认加载 `plugins/generic-browser/index.mjs` 与 `generic-login` Profile。
-两个进程都起来后，Admin UI 的 Providers 显示 1/1、Runtimes 显示 2/2；
+两个进程都起来后，Admin UI 的 Providers 显示 1/1、Runtimes 显示 1/1（Gateway 自身不算节点）；
 只起 Gateway 不起 Runner，/v1/search 会报无可用 Runtime。
 
 更完整的启动说明见 [docs/getting-started.md](./docs/getting-started.md)。
@@ -158,7 +160,6 @@ POST /v1/search
 GET  /v1/providers
 GET  /v1/runtimes
 GET  /v1/audit/:requestId
-GET  /v1/browser-profiles
 GET  /v1/admin/overview
 ```
 
@@ -232,7 +233,7 @@ pnpm smoke:generic-browser
 
 1. 实现 SearchProvider；
 2. 暴露 ProviderFactory；
-3. 打包成 Runner Plugin 或注册到 Local Runtime；
+3. 打包成 Runner Plugin；
 4. 使用注入的 Transport / BrowserHost；
 5. 在 Gateway YAML 中配置 Provider instance；
 6. 加到 route，或由请求显式指定 source。

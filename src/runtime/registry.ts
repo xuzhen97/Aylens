@@ -1,13 +1,13 @@
 import type { RuntimeSelectorConfig } from "../config/schema.js";
 import { RetrievalError } from "../core/errors.js";
-import { LOCAL_RUNTIME_ID } from "./types.js";
 import type { RuntimeRecord } from "./types.js";
 
-function matchesSelector(runtime: RuntimeRecord, selector: RuntimeSelectorConfig): boolean {
+function matchesSelector(runtime: RuntimeRecord, selector: RuntimeSelectorConfig, providerId?: string): boolean {
   if (runtime.status !== "online" && runtime.status !== "degraded") return false;
   if (runtime.capacity.activeJobs >= runtime.capacity.maxJobs) return false;
   if (selector.os && runtime.os !== selector.os) return false;
   if (selector.providerType && !runtime.capabilities.providerTypes.includes(selector.providerType)) return false;
+  if (providerId && !runtime.capabilities.providerIds.includes(providerId)) return false;
   if (selector.browser && !runtime.capabilities.browsers.includes(selector.browser)) return false;
   if (selector.profile && !runtime.capabilities.profiles.includes(selector.profile)) return false;
 
@@ -43,7 +43,7 @@ export class RuntimeRegistry {
 
   sweep(now = Date.now()): void {
     for (const runtime of this.runtimes.values()) {
-      if (runtime.id === LOCAL_RUNTIME_ID || runtime.status === "draining") continue;
+      if (runtime.status === "draining") continue;
       if (now - runtime.lastSeenAt > this.offlineAfterMs) {
         this.runtimes.set(runtime.id, { ...runtime, status: "offline" });
       }
@@ -55,15 +55,10 @@ export class RuntimeRegistry {
     return this.runtimes.get(id);
   }
 
-  select(selector: RuntimeSelectorConfig): RuntimeRecord {
+  select(selector: RuntimeSelectorConfig, providerId?: string): RuntimeRecord {
     this.sweep();
     const candidates = [...this.runtimes.values()]
-      // The Gateway's own record is not a placement target: it advertises no
-      // provider types, and `runtime.mode = "local"` never consults this lookup.
-      // Leaving it in the pool let a selector that only constrained `os` (or
-      // nothing but labels) match it, win the load tie by insertion order, and
-      // then fail to execute anything.
-      .filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID && matchesSelector(runtime, selector))
+      .filter((runtime) => matchesSelector(runtime, selector, providerId))
       .sort((a, b) => (a.capacity.activeJobs / a.capacity.maxJobs) - (b.capacity.activeJobs / b.capacity.maxJobs));
 
     const runtime = candidates[0];

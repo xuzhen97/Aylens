@@ -12,7 +12,6 @@ POST /v1/search
 GET  /v1/providers
 GET  /v1/runtimes
 GET  /v1/audit/:requestId
-GET  /v1/browser-profiles
 GET  /v1/admin/overview
 ```
 
@@ -100,21 +99,7 @@ GET /v1/audit/:requestId
 GET /v1/admin/overview
 ```
 
-返回经过脱敏的 Gateway summary、Provider、Runtime、Browser Profile 与最近 Audit。
-
-## Browser Profiles
-
-```text
-GET /v1/browser-profiles
-```
-
-这里只返回安全字段，不返回：
-
-- userDataDir
-- Chrome executable path
-- CDP endpoint
-- Chrome args
-- Proxy credential
+返回经过脱敏的 Gateway summary、Provider、Runtime 与最近 Audit。
 
 ## MCP 当前状态
 

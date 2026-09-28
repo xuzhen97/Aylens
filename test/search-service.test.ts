@@ -1,17 +1,60 @@
 import { describe, expect, it } from "vitest";
+import type WebSocket from "ws";
 import { appConfigSchema } from "../src/config/schema.js";
 import { createGatewayContext } from "../src/app/context.js";
-import type { ProviderFactory } from "../src/providers/types.js";
-import { RetrievalError } from "../src/core/errors.js";
+import type { RunnerToGatewayMessage } from "../src/runtime/protocol.js";
+
+const RUNNER_ID = "test-runner";
 
 const base = {
   version: 1 as const,
   server: { host: "127.0.0.1", port: 3000, runnerPath: "/v1/runners/connect" },
   auth: { apiKey: "api", runnerTokens: {} },
   runtimeRegistry: { heartbeatTimeoutMs: 1000, offlineAfterMs: 2000, jobTimeoutMs: 1000 },
-  transports: { direct: { type: "direct" as const } },
-  browserProfiles: {},
 };
+
+/**
+ * Stands in for a connected Runner: registers a schedulable runtime and a
+ * socket stub that answers each EXECUTE by feeding a message back into the
+ * session manager. This exercises the Gateway's control-plane path end to end
+ * without a Gateway-local Provider — the Gateway can no longer execute one.
+ */
+function attachFakeRunner(
+  context: ReturnType<typeof createGatewayContext>,
+  respond: (message: { jobId: string; executionId: string; requestId: string }) => RunnerToGatewayMessage,
+  providerTypes: string[] = ["fake"],
+): void {
+  context.runtimes.upsert({
+    id: RUNNER_ID,
+    hostname: "test-host",
+    os: "windows",
+    version: "1",
+    protocolVersion: "1",
+    status: "online",
+    labels: {},
+    capabilities: {
+      providerTypes,
+      providerIds: providerTypes,
+      browsers: [],
+      profiles: [],
+      http: true,
+      browserAutomation: false,
+    },
+    capacity: { maxJobs: 1, activeJobs: 0 },
+    lastSeenAt: Date.now(),
+  });
+
+  const socket = {
+    readyState: 1,
+    OPEN: 1,
+    send: (raw: string) => {
+      const message = JSON.parse(raw) as { jobId: string; executionId: string; requestId: string };
+      context.runnerSessions.handle(respond(message));
+    },
+    close: () => undefined,
+  };
+  context.runnerSessions.attach(RUNNER_ID, socket as unknown as WebSocket);
+}
 
 describe("SearchService", () => {
   it("returns an empty completed result when the route has no providers", async () => {
@@ -29,77 +72,97 @@ describe("SearchService", () => {
     expect(context.audit.get(response.requestId)?.status).toBe("completed");
   });
 
-  it("can add a local provider through the factory registry without changing SearchService", async () => {
+  it("fails with an explicit no-runtime error when no Runner is connected", async () => {
     const config = appConfigSchema.parse({
       ...base,
       providers: {
-        fake: { type: "fake", enabled: true, runtime: { mode: "local" }, options: {} },
+        fake: { type: "fake", enabled: true, runtime: { selector: { providerType: "fake" } }, options: {} },
       },
       routes: { default: { providers: ["fake"] } },
     });
     const context = createGatewayContext(config);
 
-    const factory: ProviderFactory = {
-      type: "fake",
-      create: (id) => ({
-        id,
-        search: async (providerContext) => ({
-          items: [{
-            id: "doc-1",
-            platform: "test",
-            type: "webpage",
-            url: "https://example.test",
-            retrievedAt: new Date().toISOString(),
-            provenance: {
-              provider: id,
-              retrievalMethod: "test",
-              requestId: providerContext.requestId,
-              fetchedAt: new Date().toISOString(),
-              runtimeId: providerContext.runtimeId,
-            },
-          }],
-        }),
-      }),
-    };
+    const response = await context.search.search({ query: "hello" });
 
-    context.providers.registerFactory(factory);
+    expect(response.status).toBe("failed");
+    expect(response.items).toEqual([]);
+    expect(response.meta.providers.fake?.error).toMatchObject({
+      code: "NO_COMPATIBLE_RUNTIME",
+      retryable: true,
+    });
+  });
+
+  it("executes a provider through a connected Runner", async () => {
+    const config = appConfigSchema.parse({
+      ...base,
+      providers: {
+        fake: { type: "fake", enabled: true, runtime: { nodeId: RUNNER_ID }, options: {} },
+      },
+      routes: { default: { providers: ["fake"] } },
+    });
+    const context = createGatewayContext(config);
+    attachFakeRunner(context, (message) => ({
+      type: "JOB_RESULT",
+      messageId: "msg-result",
+      runnerId: RUNNER_ID,
+      jobId: message.jobId,
+      executionId: message.executionId,
+      output: {
+        items: [{
+          id: "doc-1",
+          platform: "test",
+          type: "webpage",
+          url: "https://example.test",
+          retrievedAt: new Date().toISOString(),
+          provenance: {
+            provider: "fake",
+            retrievalMethod: "test",
+            requestId: message.requestId,
+            fetchedAt: new Date().toISOString(),
+            runtimeId: RUNNER_ID,
+          },
+        }],
+      },
+      timestamp: Date.now(),
+    }));
+
     const response = await context.search.search({ query: "hello" });
 
     expect(response.status).toBe("completed");
     expect(response.items).toHaveLength(1);
-    expect(response.meta.providers.fake?.runtimeId).toBe("local");
+    expect(response.meta.providers.fake?.runtimeId).toBe(RUNNER_ID);
   });
 
   it("returns provider error details and the selected runtime when execution fails", async () => {
     const config = appConfigSchema.parse({
       ...base,
       providers: {
-        failing: { type: "failing", enabled: true, runtime: { mode: "local" }, options: {} },
+        failing: { type: "failing", enabled: true, runtime: { selector: { providerType: "failing" } }, options: {} },
       },
       routes: { default: { providers: ["failing"] } },
     });
     const context = createGatewayContext(config);
+    attachFakeRunner(context, (message) => ({
+      type: "JOB_ERROR",
+      messageId: "msg-error",
+      runnerId: RUNNER_ID,
+      jobId: message.jobId,
+      executionId: message.executionId,
+      error: {
+        code: "CONTENT_UNAVAILABLE",
+        message: "Fixture content could not be read",
+        retryable: true,
+      },
+      timestamp: Date.now(),
+    }), ["failing"]);
 
-    const factory: ProviderFactory = {
-      type: "failing",
-      create: (id) => ({
-        id,
-        search: async () => {
-          throw new RetrievalError("CONTENT_UNAVAILABLE", "Fixture content could not be read", {
-            retryable: true,
-          });
-        },
-      }),
-    };
-
-    context.providers.registerFactory(factory);
     const response = await context.search.search({ query: "https://example.test/failure" });
 
     expect(response.status).toBe("failed");
     expect(response.items).toEqual([]);
     expect(response.meta.providers.failing).toMatchObject({
       status: "failed",
-      runtimeId: "local",
+      runtimeId: RUNNER_ID,
       resultCount: 0,
       error: {
         code: "CONTENT_UNAVAILABLE",
@@ -109,7 +172,7 @@ describe("SearchService", () => {
     });
     expect(context.audit.get(response.requestId)?.providers[0]).toMatchObject({
       providerId: "failing",
-      runtimeId: "local",
+      runtimeId: RUNNER_ID,
       status: "failed",
       errorCode: "CONTENT_UNAVAILABLE",
     });

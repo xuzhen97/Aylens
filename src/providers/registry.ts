@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "../config/schema.js";
+import type { ProviderConfig, ProviderDeploymentConfig } from "../config/schema.js";
 import { RetrievalError } from "../core/errors.js";
 import type {
   ProviderDefinition,
@@ -28,14 +28,9 @@ export class ProviderRegistry {
     return definition;
   }
 
-  createLocal(id: string, context: ProviderFactoryContext): SearchProvider {
-    const definition = this.getDefinition(id);
-    return this.create(id, definition.config, context);
-  }
-
   create(
     id: string,
-    config: ProviderConfig,
+    config: ProviderDeploymentConfig,
     context: ProviderFactoryContext,
   ): SearchProvider {
     const factory = this.factories.get(config.type);

@@ -1,7 +1,5 @@
 import type { GatewayContext } from "../../app/context.js";
 import type { AuditRecord } from "../../audit/audit-service.js";
-import type { BrowserProfileDefinition } from "../../browser/profile-manager.js";
-import { LOCAL_RUNTIME_ID } from "../../runtime/types.js";
 
 const SENSITIVE_QUERY_KEY = /^(?:access_?token|api_?key|auth|authorization|code|credential|key|password|secret|session|signature|token)$/i;
 const SENSITIVE_LABEL_KEY = /(?:token|secret|password|passwd|api.?key|credential|authorization|auth)/i;
@@ -53,27 +51,6 @@ function redactQuery(value: string): string {
   }
 }
 
-export function toSafeBrowserProfile(
-  profile: BrowserProfileDefinition & { activeLeases: number },
-) {
-  return {
-    id: profile.id,
-    scope: "gateway-local" as const,
-    // Deliberately not a runtime id: these profiles live in the Gateway's own
-    // config and are not placed on any node. `scope` carries that distinction.
-    runtimeId: null,
-    browser: profile.browser,
-    mode: profile.mode,
-    persistent: profile.persistent,
-    maxConcurrency: profile.maxConcurrency,
-    activeLeases: profile.activeLeases,
-    interactive: profile.interactive,
-    headless: profile.headless,
-    channel: profile.channel,
-    transport: profile.transport,
-  };
-}
-
 function toSafeAudit(record: AuditRecord) {
   return {
     requestId: record.requestId,
@@ -95,30 +72,16 @@ function toSafeAudit(record: AuditRecord) {
 export function buildAdminOverview(context: GatewayContext) {
   const runtimes = context.runtimes.list();
 
-  // The Gateway's own record is control-plane bookkeeping, not an execution
-  // node: it never heartbeats and cannot run any provider. It is reported as
-  // Gateway status (`gateway.localRuntime`) and kept out of the node list,
-  // because a node count that includes the process serving the page is noise.
-  const nodes = runtimes.filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID);
-  const localRuntime = runtimes.find((runtime) => runtime.id === LOCAL_RUNTIME_ID);
-
-  const localProfiles = context.browserProfiles.list().map(toSafeBrowserProfile);
-  const remoteProfiles = nodes
-    .flatMap((runtime) => runtime.capabilities.profiles.map((profileId) => ({
+  // Profiles are advertised by connected Runners. The Gateway holds no profiles
+  // of its own: it never launches or touches a browser.
+  const browserProfiles = runtimes.flatMap((runtime) =>
+    runtime.capabilities.profiles.map((profileId) => ({
       id: profileId,
       scope: "runner" as const,
       runtimeId: runtime.id,
       browser: runtime.capabilities.browsers.length === 1
         ? runtime.capabilities.browsers[0]
         : undefined,
-      mode: undefined,
-      persistent: undefined,
-      maxConcurrency: undefined,
-      activeLeases: undefined,
-      interactive: undefined,
-      headless: undefined,
-      channel: undefined,
-      transport: undefined,
     })));
 
   const providers = context.providers.list().map(({ id, config }) => ({
@@ -126,12 +89,10 @@ export function buildAdminOverview(context: GatewayContext) {
     type: config.type,
     enabled: config.enabled,
     runtime: toSafeRuntimeTarget(config.runtime),
-    browserProfile: config.browser?.profile,
-    transport: config.transport?.primary,
   }));
 
   const audits = context.audit.list(30).map(toSafeAudit);
-  const onlineNodes = nodes.filter((runtime) =>
+  const onlineNodes = runtimes.filter((runtime) =>
     runtime.status === "online" || runtime.status === "degraded"
   );
 
@@ -139,23 +100,21 @@ export function buildAdminOverview(context: GatewayContext) {
     generatedAt: Date.now(),
     gateway: {
       status: "ready" as const,
-      localRuntime: localRuntime?.status ?? "offline",
-      remoteRuntimes: nodes.length,
     },
     summary: {
       providers: providers.length,
       enabledProviders: providers.filter((provider) => provider.enabled).length,
-      runtimes: nodes.length,
+      runtimes: runtimes.length,
       onlineRuntimes: onlineNodes.length,
-      browserProfiles: localProfiles.length + remoteProfiles.length,
+      browserProfiles: browserProfiles.length,
       recentAudits: audits.length,
     },
     providers,
-    runtimes: nodes.map((runtime) => ({
+    runtimes: runtimes.map((runtime) => ({
       ...runtime,
       labels: redactLabels(runtime.labels),
     })),
-    browserProfiles: [...localProfiles, ...remoteProfiles],
+    browserProfiles,
     audits,
   };
 }

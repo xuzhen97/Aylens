@@ -10,7 +10,7 @@ AI Agent
   -> SearchService
   -> ProviderRouter
   -> ExecutionDispatcher
-  -> Local Runtime / Remote Runner
+  -> Remote Runner
   -> Provider Plugin
   -> Runtime-local Transport / BrowserHost
   -> Internet

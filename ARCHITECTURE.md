@@ -3,6 +3,10 @@
 > 状态：Architecture Proposal  
 > 技术栈：Node.js + TypeScript  
 > 目标：为 AI Agent 提供统一、可扩展、可配置、可审计，并支持跨主机 Provider / Browser Runtime 的互联网检索与内容读取能力。
+>
+> **执行边界**：Gateway 只做控制与调度，所有抓取必须经 Runner；Gateway 进程不加载执行型 Provider，
+> 也不持有 Transport / Browser Profile / 登录态。该决策的正式记录见
+> [docs/adr/2026-09-28-gateway-control-plane-only.md](./adr/2026-09-28-gateway-control-plane-only.md)。
 
 ---
 
@@ -16,7 +20,7 @@ Aylens 是一个面向 AI Agent 的统一互联网检索网关（Retrieval Gatew
 - URL 内容读取与正文抽取；
 - Provider 按配置启停；
 - 每个 Provider 独立配置直连、HTTP Proxy、SOCKS5、Proxy Pool；
-- Provider 可运行在 Gateway 本机或其它 Windows/Linux Runner；
+- Provider 运行在 Windows/Linux Runner 上，由 Gateway 统一调度；
 - 支持真实 Google Chrome、持久 Browser Profile 和本机登录态复用；
 - Runner 可分布在不同网络和电脑，通过统一调度接入；
 - Provider 级超时、限流、并发、重试和 fallback；
@@ -120,14 +124,14 @@ API / MCP 负责：协议适配，不承载业务逻辑。
 
 同时必须坚持两个新的分布式原则：
 
-1. **Provider 是可调度执行单元，而不是默认运行在 Gateway 进程中的 class。**
+1. **Provider 是可调度执行单元，只在 Runner 上运行，从不作为 Gateway 进程内的 class 执行。**
 2. **登录态、代理密钥、Chrome User Data 等有状态资源优先留在执行节点本地，Gateway 只持有逻辑引用。**
 
 ---
 
 ## 4. 总体架构
 
-Aylens 采用 **Control Plane + Distributed Execution Plane + Browser Plane**。Gateway 可以本地执行轻量 HTTP Provider，也可以把整个 Provider Operation 调度到其它 Linux/Windows 电脑。
+Aylens 采用 **Control Plane + Distributed Execution Plane + Browser Plane**。Gateway 只负责控制与调度，每个 Provider Operation 都下发到已连接的 Linux/Windows Runner 执行；Gateway 自身不访问目标网站。
 
 ```mermaid
 flowchart TB
@@ -151,8 +155,8 @@ flowchart TB
         AUDIT["Audit / Trace"]
     end
 
-    subgraph LocalRuntime["Gateway Local Runtime"]
-        LP["HTTP Providers<br/>Brave / X API / Site Search"]
+    subgraph HttpRunner["Runner: HTTP / API Providers"]
+        LP["Aylens Runner<br/>HTTP Providers<br/>Brave / X API / Site Search"]
         LTM["Transport Manager"]
         LD["Direct"]
         LPROXY["HTTP/SOCKS Proxy"]
@@ -199,7 +203,7 @@ flowchart TB
 
     DISPATCH <--> RREG
 
-    DISPATCH -->|"in_process"| LP
+    DISPATCH -->|"runner job"| LP
     LP --> LTM
     LTM --> LD --> INTERNET
     LTM --> LPROXY --> INTERNET
@@ -232,7 +236,7 @@ flowchart TB
     AUDIT --> OTEL
 ```
 
-核心变化是：Gateway 不再假设 Provider 与自己处于同一进程或同一主机。Provider 的执行位置由 Runtime/Dispatcher 决定；浏览器登录态和代理等机器本地资源由对应 Runner 管理。
+核心变化是：Gateway 从不执行 Provider，也不接触目标网站。Provider 的执行位置由 Dispatcher 在已连接的 Runner 中选出；登录态、代理和浏览器等机器本地资源由对应 Runner 独占管理。
 
 ---
 
@@ -250,7 +254,6 @@ sequenceDiagram
     participant Router
     participant Dispatch as Execution Dispatcher
     participant Registry as Runtime Registry
-    participant Local as Local Runtime
     participant Runner as Remote Runner
     participant Audit
     participant Ranker
@@ -274,13 +277,13 @@ sequenceDiagram
         Search->>Router: resolve provider definitions
         Router-->>Search: ProviderExecutionPlan
 
-        par local provider
+        par http provider
             Search->>Dispatch: execute(brave)
-            Dispatch->>Registry: resolve runtime
-            Registry-->>Dispatch: local
-            Dispatch->>Local: provider.search()
-            Local-->>Dispatch: ProviderSearchResponse
-        and remote browser provider
+            Dispatch->>Registry: match capabilities/http
+            Registry-->>Dispatch: http-runner-01
+            Dispatch->>Runner: EXECUTE(job, provider operation)
+            Runner-->>Dispatch: ProviderSearchResponse
+        and browser provider
             Search->>Dispatch: execute(xiaohongshu-main)
             Dispatch->>Registry: match capabilities/profile
             Registry-->>Dispatch: windows-home-01
@@ -384,7 +387,6 @@ REST 和 MCP 必须调用同一个 Core Service。
 - `ReadService`
 - `QueryPlanner`
 - `ProviderRouter`
-- `LocalProviderExecutor`
 - `ExecutionDispatcher`
 - `RuntimeRegistry`
 - `RuntimeSelector`
@@ -410,13 +412,13 @@ Provider 是平台适配器。
 
 Provider 不允许自行读取全局代理环境并私自决定网络出口。
 
-同一套 Provider contract 可以运行在 Gateway Local Runtime 或 Aylens Runner。对于远程 Provider，Gateway 保存的是 Provider Definition 和 runtime requirements；实际 Provider class 由 Runner 的 Provider Registry 创建。
+同一套 Provider contract 在所有 Runner 上复用。Gateway 保存的是 Provider Definition 和 runtime requirements，不加载也不实例化任何执行型 Provider；实际 Provider class 由 Runner 的 Provider Registry 创建。
 
 ### 7.4 Execution Runtime Layer
 
 统一负责：
 
-- Local / Remote execution；
+- Runner 的调度与选择；
 - Runtime capability registry；
 - Provider-to-Runtime 调度；
 - Runner session 与 heartbeat；
@@ -530,9 +532,17 @@ Provider 名称和实现类型必须分离。
 providers:
   x-official:
     type: x-api
+    runtime:
+      selector:
+        capabilities:
+          http: true
 
   x-web:
     type: site-search
+    runtime:
+      selector:
+        capabilities:
+          http: true
 ```
 
 此时：
@@ -540,7 +550,10 @@ providers:
 - `x-official` 是 Provider 实例 ID；
 - `x-api` 是 Provider implementation type。
 
-Registry：
+Registry 分成两层：
+
+- **Gateway 侧**只保存 Provider Definition（实例 ID、type、enabled、runtime requirements 与非敏感调度配置）；
+- **Runner 侧**的 Provider Registry 持有 `ProviderFactory`，并真正 `create()` 出 Provider 实例。
 
 ```ts
 export interface ProviderFactory<TConfig = unknown> {
@@ -553,28 +566,25 @@ export interface ProviderFactory<TConfig = unknown> {
 }
 ```
 
-启动流程：
+Gateway 启动流程：
 
 ```mermaid
 flowchart TD
     CFG["Load YAML"] --> VALID["Zod Validate"]
     VALID --> PLOOP["Iterate provider definitions"]
-    PLOOP --> TYPE["provider.type"]
-    TYPE --> REG["ProviderRegistry.get(type)"]
-    REG --> DEF["Validate Provider Definition"]
+    PLOOP --> DEF["Validate Provider Definition"]
 
-    DEF --> MODE{"runtime mode"}
-    MODE -->|"local"| FACTORY["ProviderFactory.create()"]
-    FACTORY --> TRANSPORT["Resolve local transport"]
-    TRANSPORT --> INSTANCE["Local Provider Instance"]
+    DEF --> TARGET{"runtime target"}
+    TARGET -->|"nodeId"| PIN["Require that Runner is known"]
+    TARGET -->|"selector"| SEL["Require a capability selector"]
 
-    MODE -->|"remote selector"| REMOTE["Register executable definition + requirements"]
-
-    INSTANCE --> READY["Register by provider id"]
-    REMOTE --> READY
+    PIN --> READY["Register Provider Definition"]
+    SEL --> READY
 ```
 
-对于远程 Provider，Gateway 不必构造实际 Provider 实例；它只保存 Provider Definition、operation schema 和 runtime requirements，真正的 Factory/Provider 实现在 Runner 上。
+Gateway 从不构造 Provider 实例，也不调用 `ProviderFactory.create()`；它只保存 Provider Definition、operation schema 和 runtime requirements。真正的 Factory / Provider 实现由 Runner 加载和执行。
+
+`runtime` 是必填字段，不存在隐式的“在 Gateway 本地执行”默认值；没有可用 Runner 时请求返回 `NO_COMPATIBLE_RUNTIME`，不做回退。
 
 增加新 Provider 的最理想流程：
 
@@ -628,7 +638,7 @@ Browser Provider
 
 ## 11. Provider 与 Transport 解耦
 
-本节描述的是**单个 Runtime 内部**的 Provider/Transport 关系。无论 Provider 在 Gateway 本机还是远程 Runner，它都只看到当前 Runtime 注入的 Transport，而不会直接访问其它 Runtime 的代理配置。
+本节描述的是**单个 Runner 内部**的 Provider/Transport 关系。Provider 只看到所在 Runner 注入的 Transport，而不会直接访问其它 Runner 的代理配置。
 
 ```mermaid
 flowchart TB
@@ -732,7 +742,7 @@ transports:
 
 Secret 只通过环境变量或 Secret Manager 注入，不直接提交到配置文件。
 
-分布式模式下每个 Runner 拥有自己的 Transport Registry。Gateway 配置中的 `transports` 只代表 Gateway Local Runtime；远程 transport 由 Runner 本地配置与本地 Secret 解析。
+每个 Runner 拥有自己的 Transport Registry。Gateway 配置中不存在 transport 段，也不解析任何代理凭据；transport 完全由 Runner 本地配置与本地 Secret 解析。
 
 ---
 
@@ -1914,9 +1924,6 @@ runtimeRegistry:
     path: /v1/runners/connect
 
 runtimePolicies:
-  local-only:
-    mode: local
-
   windows-browser:
     selector:
       os: windows
@@ -1984,7 +1991,9 @@ providers:
     enabled: true
 
     runtime:
-      mode: local
+      selector:
+        capabilities:
+          http: true
 
     credentials:
       apiKey: "${BRAVE_API_KEY}"
@@ -2004,7 +2013,9 @@ providers:
     enabled: true
 
     runtime:
-      mode: local
+      selector:
+        capabilities:
+          http: true
 
     credentials:
       bearerToken: "${X_BEARER_TOKEN}"
@@ -2235,14 +2246,12 @@ build registries
 
 Cross-reference 检查包括：
 
-- 本地 Provider 引用的 transport 是否存在；
 - route 引用的 provider 是否存在；
 - retryPolicy 是否存在；
 - networkPolicy 是否存在；
 - runtime selector/schema 是否合法；
 - Browser Provider 是否声明需要的 browser/profile capability；
 - proxy-only Provider 是否配置了 direct fallback；
-- 本地静态 Runtime 引用是否存在；
 - duplicate provider id；
 - unknown provider type。
 
@@ -2266,8 +2275,7 @@ flowchart TD
     REF --> POLICY["Network Policy Validation"]
     POLICY --> TYPES["Provider/Transport Type Validation"]
 
-    TYPES --> BUILD_T["Build Local Transport Registry"]
-    BUILD_T --> BUILD_P["Build Provider Definitions"]
+    TYPES --> BUILD_P["Build Provider Definitions"]
     BUILD_P --> BUILD_RT["Build Runtime Policies"]
     BUILD_RT --> BUILD_R["Build Route Registry"]
     BUILD_R --> START_REG["Start Runtime Registry / Runner Endpoint"]
@@ -2690,10 +2698,15 @@ flowchart TB
 
     subgraph CoreHost["Gateway Host / Linux VM"]
         GW["Aylens Gateway"]
-        LOCAL["Local Runtime<br/>Brave / X API / Web"]
         PG[("PostgreSQL")]
         REDIS[("Redis")]
         OBJ[("Object Storage")]
+    end
+
+    subgraph CloudRunner["Linux Runner / HTTP API Providers"]
+        RH["Aylens Runner"]
+        HTTP["Brave / X API / Web Providers"]
+        PH["Local Proxy US"]
     end
 
     subgraph HomePC["Windows PC A"]
@@ -2713,13 +2726,13 @@ flowchart TB
         CHB["Google Chrome"]
     end
 
-    GW --> LOCAL
     GW --> PG
     GW --> REDIS
     GW --> OBJ
 
     RA -->|"outbound WSS/HTTPS"| GW
     RB -->|"outbound WSS/HTTPS"| GW
+    RH -->|"outbound WSS/HTTPS"| GW
 
     RA --> XHS --> PMA --> PA
     PA --> CHA --> PXA --> NET["Internet"]
@@ -2727,7 +2740,7 @@ flowchart TB
     RB --> ZH --> PMB --> PB
     PB --> CHB --> NET
 
-    LOCAL --> NET
+    RH --> HTTP --> PH --> NET
 ```
 
 Runner 默认主动连接 Gateway，而不是让 Gateway 主动访问 Windows 节点。这样远程电脑无需公网 IP、端口映射或开放入站 RPC 端口，只需要允许 outbound HTTPS/WSS。
@@ -2738,7 +2751,7 @@ Runner 默认主动连接 Gateway，而不是让 Gateway 主动访问 Windows �
 
 ### 51.1 Execution Runtime 抽象
 
-Provider 不再隐含“运行于 Gateway 当前进程”。
+Provider 从不运行于 Gateway 进程。
 
 建议抽象：
 
@@ -2759,9 +2772,10 @@ export interface ExecutionRuntime {
 V1 实现：
 
 ```text
-LocalRuntime
 RemoteRunnerRuntime
 ```
+
+Gateway 自身不是 Runtime，也不注册进 Runtime Registry。
 
 Gateway 调用链由：
 
@@ -2848,7 +2862,7 @@ OFFLINE
 - Job capacity；
 - Browser health；
 - Profile health；
-- 本地 Transport health。
+- Runner 本地 Transport health。
 
 ### 51.3 Runtime Selector
 
@@ -3220,13 +3234,9 @@ Google Chrome
 
 ### 51.11 Transport 与 Secret 的 Runtime Locality
 
-分布式后，Transport Registry 是 **每个 Runtime 自己的资源**。
+分布式后，Transport Registry 是 **每个 Runner 自己的资源**，Gateway 不持有任何 transport。
 
 ```text
-Gateway Local Runtime
-├── direct
-└── proxy-us
-
 Windows Runner A
 ├── direct
 ├── proxy-cn
@@ -3407,7 +3417,6 @@ sequenceDiagram
     participant Config
     participant DB
     participant Redis
-    participant Local as Local Runtime
     participant Registry as Runtime Registry
     participant API
 
@@ -3416,9 +3425,6 @@ sequenceDiagram
 
     Main->>DB: connect + migration check
     Main->>Redis: connect
-
-    Main->>Local: build local transports/providers
-    Local-->>Main: local runtime ready
 
     Main->>Registry: start runtime registry
     Main->>API: start REST/MCP + Runner WSS endpoint
@@ -3510,7 +3516,7 @@ Gateway 的 `/ready` 不应该要求所有远端 Runner 在线，否则一台家
 
 - Gateway API Key；
 - Runner 独立 credential；
-- local-only Browser secrets；
+- Browser / proxy secret 只存在于各 Runner 本地；
 - SSRF guard；
 - secret redaction；
 - NetworkPolicy。
@@ -3654,8 +3660,8 @@ Browser Provider 应把 DOM fixture 与页面 extractor 尽量拆开，避免所
 
 架构达到 V1 可用标准至少满足：
 
-1. Agent 通过同一个 Search API 同时使用本地 Provider 和远端 Provider；
-2. 同一次搜索可以并发 Brave、本机 X API 和 Windows Browser Provider；
+1. Agent 通过同一个 Search API 使用分布在多个 Runner 上的 Provider；
+2. 同一次搜索可以并发 Brave、X API 和 Windows Browser Provider；
 3. Gateway 不需要知道 Windows 的真实 Chrome Cookie；
 4. Windows Runner 可以主动连接 Gateway，无需开放入站端口；
 5. Runner 注册后 Gateway 能看到 capability、capacity 和 profile health；
@@ -3698,7 +3704,7 @@ flowchart LR
     end
 
     subgraph EP["Execution Plane"]
-        LR["Local Runtime"]
+        WR0["HTTP / API Runner"]
         WR1["Windows Runner A"]
         WR2["Windows Runner B"]
     end
@@ -3712,14 +3718,14 @@ flowchart LR
 
     API --> R --> D
     D --> RR
-    D --> LR
+    D --> WR0
     D --> WR1
     D --> WR2
 
     WR1 --> PM1 --> C1
     WR2 --> PM2 --> C2
 
-    LR --> N
+    WR0 --> N
     WR1 --> N
     WR2 --> N
     N --> API

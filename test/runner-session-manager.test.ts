@@ -1,6 +1,5 @@
 import type WebSocket from "ws";
 import { describe, expect, it, vi } from "vitest";
-import { providerSchema } from "../src/config/schema.js";
 import { RunnerSessionManager } from "../src/runtime/runner-session-manager.js";
 import type { RuntimeExecutionRequest } from "../src/runtime/types.js";
 
@@ -22,12 +21,6 @@ function searchRequest(executionId: string): RuntimeExecutionRequest {
     executionId,
     providerId: "provider-1",
     providerType: "fake",
-    providerConfig: providerSchema.parse({
-      type: "fake",
-      enabled: true,
-      runtime: { nodeId: "runner-1" },
-      options: {},
-    }),
     operation: "search",
     input: { query: "hello" },
     requestId: "request-1",

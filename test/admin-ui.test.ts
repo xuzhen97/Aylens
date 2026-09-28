@@ -33,10 +33,6 @@ function createAdminServer() {
     },
     transports: {
       direct: { type: "direct" },
-      privateProxy: {
-        type: "http-proxy",
-        url: "http://proxy-user:superProxyPassword123@127.0.0.1:8899",
-      },
     },
     providers: {
       browserRead: {
@@ -68,21 +64,6 @@ function createAdminServer() {
         providers: ["browserRead"],
       },
     },
-    browserProfiles: {
-      "local-profile": {
-        browser: "chrome",
-        mode: "launch",
-        persistent: true,
-        userDataDir: "D:/private/chrome/profile",
-        maxConcurrency: 1,
-        interactive: true,
-        headless: false,
-        channel: "chrome",
-        executablePath: "C:/private/chrome.exe",
-        args: ["--private-argument"],
-        transport: "privateProxy",
-      },
-    },
   });
 
   const context = createGatewayContext(config);
@@ -96,7 +77,7 @@ function createAdminServer() {
   );
   context.audit.addProviderEvent("request-admin-test", {
     providerId: "browserRead",
-    runtimeId: "local",
+    runtimeId: "test-runner",
     startedAt: Date.now() - 20,
     completedAt: Date.now(),
     status: "success",
@@ -223,19 +204,16 @@ describe("admin UI", () => {
       summary: {
         providers: 1,
         enabledProviders: 1,
-        // No Runner is connected in this fixture, and the Gateway's own record
-        // is deliberately not counted as a node.
+        // No Runner is connected in this fixture, so no node is reported.
         runtimes: 0,
         onlineRuntimes: 0,
-        browserProfiles: 1,
+        browserProfiles: 0,
         recentAudits: 1,
       },
       providers: [
         {
           id: "browserRead",
           type: "generic-browser",
-          browserProfile: "local-profile",
-          transport: "privateProxy",
         },
       ],
     });
@@ -255,51 +233,15 @@ describe("admin UI", () => {
     const body = overview.body;
     expect(body).not.toContain("admin-api-key-do-not-expose");
     expect(body).not.toContain("runner-token-do-not-expose");
-    expect(body).not.toContain("superProxyPassword123");
-    expect(body).not.toContain("127.0.0.1:8899");
-    expect(body).not.toContain("D:/private/chrome/profile");
-    expect(body).not.toContain("C:/private/chrome.exe");
-    expect(body).not.toContain("--private-argument");
     expect(body).not.toContain("provider-option-must-not-be-returned");
     expect(body).not.toContain("selector-label-secret");
     expect(body).not.toContain("audit-secret-token");
 
     const payload = overview.json();
-    expect(payload.browserProfiles[0]).toMatchObject({
-      id: "local-profile",
-      scope: "gateway-local",
-      runtimeId: null,
-      browser: "chrome",
-      activeLeases: 0,
-      transport: "privateProxy",
-    });
     expect(payload.audits[0].request.query).toContain("token=***");
     expect(payload.providers[0].runtime.selector.labels).toEqual({
       apiToken: "***",
       region: "test",
-    });
-  });
-
-  it("keeps the public browser-profile endpoint sanitized", async () => {
-    const { app } = createAdminServer();
-
-    const response = await app.inject({
-      method: "GET",
-      url: "/v1/browser-profiles",
-      headers: {
-        authorization: "Bearer admin-api-key-do-not-expose",
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.body).not.toContain("D:/private/chrome/profile");
-    expect(response.body).not.toContain("C:/private/chrome.exe");
-    expect(response.body).not.toContain("--private-argument");
-    expect(response.json().profiles[0]).toMatchObject({
-      id: "local-profile",
-      browser: "chrome",
-      mode: "launch",
-      activeLeases: 0,
     });
   });
 });

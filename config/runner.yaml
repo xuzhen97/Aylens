@@ -18,6 +18,21 @@ capabilities:
   http: true
   browserAutomation: true
 
+providers:
+  generic-browser:
+    type: generic-browser
+    browser:
+      profile: generic-login
+    options:
+      waitUntil: domcontentloaded
+      timeoutMs: 30000
+      extractionTimeoutMs: 10000
+      postLoadDelayMs: 0
+      maxTextChars: 50000
+      snippetChars: 500
+      textSelector: body
+      keepPageOpen: false
+
 transports:
   direct:
     type: direct

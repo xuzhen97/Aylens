@@ -49,18 +49,15 @@ runtimeRegistry:
   offlineAfterMs: 60000
   jobTimeoutMs: 30000
 
-transports:
-  direct:
-    type: direct
-
 providers: {}
 
 routes:
   default:
     providers: []
-
-browserProfiles: {}
 ```
+
+Gateway 侧不再有 `transports` 与 `browserProfiles` 段：Gateway 不做抓取，因此不持有 Transport 或 Browser Profile。
+`providers.<id>.transport` / `providers.<id>.browser` 只是随任务下发给 Runner 的逻辑提示，Gateway 不校验它们。
 
 ## Runner 基本结构
 
@@ -88,7 +85,7 @@ transports:
 browserProfiles: {}
 ```
 
-Provider capability 不应手工伪造。Runner 会根据实际成功加载的 Provider Plugin 上报 providerTypes。
+Provider capability 不应手工伪造。Runner 会根据实际成功加载的 Provider Plugin 上报 providerTypes，并根据本机 Provider Deployment 上报 providerIds。
 
 ## Runtime 选择
 
@@ -109,8 +106,6 @@ providers:
         browser: chrome
         profile: generic-login
 
-    browser:
-      profile: generic-login
 ```
 
 这里表达的是：
@@ -119,12 +114,25 @@ providers:
 - Provider type：generic-browser
 - Runtime OS：Windows
 - Runtime 已加载对应 Provider Plugin
+- Runtime 已部署 generic-browser 这个 Provider ID
 - Runtime 提供 Chrome
 - Runtime 拥有 generic-login Profile
 
-Gateway 不需要知道远程机器上的 Chrome 路径、Cookie 或代理密码。
+Provider 的执行配置属于 Runner，例如：
 
-## Transport
+```yaml
+providers:
+  generic-browser:
+    type: generic-browser
+    browser:
+      profile: generic-login
+    options:
+      timeoutMs: 30000
+```
+
+Gateway 不需要知道远程机器上的 Chrome 路径、Provider Options、Cookie 或代理配置。
+
+## Transport（Runner 配置）
 
 Direct：
 
@@ -168,7 +176,7 @@ socks5h://
 
 代理凭据应留在 Runtime 本地环境变量，不通过 Gateway 下发。
 
-## Browser Profile
+## Browser Profile（Runner 配置）
 
 Persistent Chrome：
 

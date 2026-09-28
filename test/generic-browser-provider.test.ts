@@ -1,6 +1,6 @@
 import type { BrowserContext } from "playwright-core";
 import { describe, expect, it, vi } from "vitest";
-import { providerSchema } from "../src/config/schema.js";
+import { providerDeploymentSchema } from "../src/config/schema.js";
 import type { BrowserHost, BrowserSession } from "../src/browser/types.js";
 import { TransportRegistry } from "../src/transports/registry.js";
 import { loadProviderPlugins } from "../src/providers/plugin.js";
@@ -61,7 +61,7 @@ describe("generic-browser provider", () => {
     const factory = await genericFactory();
     const provider = factory.create(
       "generic-browser",
-      providerSchema.parse({
+      providerDeploymentSchema.parse({
         type: "generic-browser",
         enabled: true,
         runtime: { nodeId: "runner-1" },
@@ -132,8 +132,9 @@ describe("generic-browser provider", () => {
     const factory = await genericFactory();
     const provider = factory.create(
       "generic-browser",
-      providerSchema.parse({
+      providerDeploymentSchema.parse({
         type: "generic-browser",
+        runtime: { nodeId: "runner-1" },
         browser: { profile: "generic-login" },
         options: { keepPageOpen: true },
       }),
@@ -178,8 +179,9 @@ describe("generic-browser provider", () => {
     const factory = await genericFactory();
     const provider = factory.create(
       "generic-browser",
-      providerSchema.parse({
+      providerDeploymentSchema.parse({
         type: "generic-browser",
+        runtime: { nodeId: "runner-1" },
         browser: { profile: "generic-login" },
         options: {},
       }),
@@ -212,8 +214,9 @@ describe("generic-browser provider", () => {
     const factory = await genericFactory();
     const provider = factory.create(
       "generic-browser",
-      providerSchema.parse({
+      providerDeploymentSchema.parse({
         type: "generic-browser",
+        runtime: { nodeId: "runner-1" },
         browser: { profile: "generic-login" },
         options: {},
       }),
@@ -241,8 +244,9 @@ describe("generic-browser provider", () => {
 
     expect(() => factory.create(
       "generic-browser",
-      providerSchema.parse({
+      providerDeploymentSchema.parse({
         type: "generic-browser",
+        runtime: { nodeId: "runner-1" },
         browser: { profile: "generic-login" },
         options: {},
       }),

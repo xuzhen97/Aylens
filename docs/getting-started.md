@@ -9,7 +9,7 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway。
 - Fastify Gateway
 - API Key 鉴权
 - Provider / ProviderFactory 抽象
-- Local Runtime 与 Remote Runner
+- Gateway 纯控制面 + 远程 Runner 执行面（Gateway 不做任何抓取）
 - Runner WebSocket 协议
 - Runtime Registry 与 capability 调度
 - Runner Provider Plugin 动态加载

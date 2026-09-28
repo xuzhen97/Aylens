@@ -4,7 +4,6 @@ import type { RunnerConfig } from "./config.js";
 import type { RunnerRuntime } from "./runtime.js";
 import { createId } from "../shared/ids.js";
 import { toErrorPayload } from "../core/errors.js";
-import { providerSchema } from "../config/schema.js";
 import { searchRequestSchema } from "../contracts/validation.js";
 import {
   gatewayToRunnerSchema,
@@ -272,17 +271,20 @@ export class AylensRunner {
     }));
 
     try {
-      const providerConfig = providerSchema.parse(message.providerConfig);
-      if (providerConfig.type !== message.providerType) {
+      const deployment = this.runtime.deployments[message.providerId];
+      if (!deployment) {
+        throw new Error(`Provider deployment is not configured on this Runner: ${message.providerId}`);
+      }
+      if (deployment.type !== message.providerType) {
         throw new Error(
-          `Provider type mismatch: message=${message.providerType} config=${providerConfig.type}`,
+          `Provider type mismatch: message=${message.providerType} deployment=${deployment.type}`,
         );
       }
 
       const request = searchRequestSchema.parse(message.input);
       const provider = this.runtime.providers.create(
         message.providerId,
-        providerConfig,
+        deployment,
         {
           transports: this.runtime.transports,
           browser: this.runtime.browser,
@@ -394,6 +396,7 @@ export class AylensRunner {
   private capabilities() {
     return {
       providerTypes: this.runtime.pluginTypes,
+      providerIds: Object.keys(this.runtime.deployments),
       browsers: [
         ...new Set([
           ...this.config.capabilities.browsers,

@@ -178,7 +178,6 @@ export class RunnerSessionManager {
         executionId: request.executionId,
         providerId: request.providerId,
         providerType: request.providerType,
-        providerConfig: request.providerConfig,
         operation: request.operation,
         input: request.input,
         requestId: request.requestId,

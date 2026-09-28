@@ -11,6 +11,7 @@ import type { RunnerConfig } from "./config.js";
 
 export interface RunnerRuntime {
   providers: ProviderRegistry;
+  deployments: RunnerConfig["providers"];
   transports: TransportRegistry;
   profiles: BrowserProfileManager;
   browser: BrowserHost;
@@ -41,6 +42,7 @@ export async function createRunnerRuntime(config: RunnerConfig): Promise<RunnerR
 
   return {
     providers,
+    deployments: config.providers,
     transports,
     profiles,
     browser,

@@ -122,22 +122,15 @@ offline
 
 ## Browser Profiles 页面
 
-同时展示：
+只展示 Runner capability 声明的远程 Profile：
 
-- Gateway 本地 Profile
-- Runner capability 声明的远程 Profile
-
-本地 Profile 可显示：
-
+- Runner ID
 - Profile ID
 - browser
-- mode
-- maxConcurrency
-- activeLeases
-- interactive
-- transport 逻辑名
 
-远程 Runner 目前只上报逻辑 Profile capability，因此无法可靠展示远程 lease 数时，会明确显示未上报，而不是伪造为 0。
+Gateway 不持有任何 Profile，也不再启动浏览器，因此不存在“Gateway 本地 Profile”。
+
+Runner 目前只上报逻辑 Profile capability，因此无法可靠展示远程 lease 数时，会明确显示未上报，而不是伪造为 0。
 
 不会显示：
 

@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "../config/schema.js";
+import type { ProviderConfig, ProviderDeploymentConfig } from "../config/schema.js";
 import type { ProviderSearchResponse, SearchRequest } from "../contracts/search.js";
 import type { BrowserHost } from "../browser/types.js";
 import type { TransportRegistry } from "../transports/registry.js";
@@ -30,7 +30,7 @@ export interface ProviderFactory {
   readonly type: string;
   create(
     id: string,
-    config: ProviderConfig,
+    config: ProviderDeploymentConfig,
     context: ProviderFactoryContext,
   ): SearchProvider;
 }

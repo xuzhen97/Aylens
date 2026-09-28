@@ -3,9 +3,8 @@ import { z } from "zod";
 import type { GatewayContext } from "../../app/context.js";
 import { RetrievalError, toErrorPayload } from "../../core/errors.js";
 import { attachRunnerGateway } from "../../runtime/runner-gateway.js";
-import { LOCAL_RUNTIME_ID } from "../../runtime/types.js";
 import { renderAdminPage, type AdminPage } from "./admin-page.js";
-import { buildAdminOverview, toSafeBrowserProfile } from "./admin-data.js";
+import { buildAdminOverview } from "./admin-data.js";
 
 const searchSchema = z.object({
   query: z.string().min(1),
@@ -60,8 +59,7 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
 
   app.get("/ready", async () => ({
     status: "ready",
-    localRuntime: context.runtimes.get(LOCAL_RUNTIME_ID)?.status ?? "offline",
-    remoteRuntimes: context.runtimes.list().filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID).length,
+    runtimes: context.runtimes.list().length,
   }));
 
   app.addHook("preHandler", async (request) => {
@@ -85,10 +83,10 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
     })),
   }));
 
-  // Node listing: the Gateway's own record is reported by /ready as
-  // `localRuntime`, not as a schedulable node.
+  // Node listing: only real, connected Runners appear here. The Gateway is not
+  // a schedulable node and never registers itself.
   app.get("/v1/runtimes", async () => ({
-    runtimes: context.runtimes.list().filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID),
+    runtimes: context.runtimes.list(),
   }));
 
   app.get("/v1/admin/overview", async () => buildAdminOverview(context));
@@ -97,14 +95,6 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
     const record = context.audit.get(request.params.requestId);
     if (!record) return reply.status(404).send({ error: { code: "NOT_FOUND", message: "Audit record not found" } });
     return record;
-  });
-
-  app.get("/v1/browser-profiles", async () => ({
-    profiles: context.browserProfiles.list().map(toSafeBrowserProfile),
-  }));
-
-  app.addHook("onClose", async () => {
-    await context.browser.close();
   });
 
   attachRunnerGateway({

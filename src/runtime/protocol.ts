@@ -4,6 +4,7 @@ export const RUNNER_PROTOCOL_VERSION = "1";
 
 const capabilitiesSchema = z.object({
   providerTypes: z.array(z.string()),
+  providerIds: z.array(z.string()),
   browsers: z.array(z.string()),
   profiles: z.array(z.string()),
   http: z.boolean(),
@@ -91,7 +92,6 @@ export const gatewayToRunnerSchema = z.discriminatedUnion("type", [
     executionId: z.string(),
     providerId: z.string(),
     providerType: z.string(),
-    providerConfig: z.unknown(),
     operation: z.literal("search"),
     input: z.unknown(),
     requestId: z.string(),

@@ -98,9 +98,6 @@ try {
       offlineAfterMs: 5000,
       jobTimeoutMs: 30_000,
     },
-    transports: {
-      direct: { type: "direct" },
-    },
     providers: {
       "generic-browser": {
         type: "generic-browser",
@@ -132,7 +129,6 @@ try {
         providers: ["generic-browser"],
       },
     },
-    browserProfiles: {},
   });
 
   const gateway = createGatewayContext(gatewayConfig);

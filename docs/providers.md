@@ -129,7 +129,7 @@ https://
 
 带嵌入式用户名密码的 URL 会被拒绝。
 
-示例配置：
+Gateway Provider Definition：
 
 ```yaml
 providers:
@@ -144,9 +144,16 @@ providers:
         browser: chrome
         profile: generic-login
 
+```
+
+Runner Provider Deployment：
+
+```yaml
+providers:
+  generic-browser:
+    type: generic-browser
     browser:
       profile: generic-login
-
     options:
       waitUntil: domcontentloaded
       timeoutMs: 30000
@@ -157,6 +164,8 @@ providers:
       textSelector: body
       keepPageOpen: false
 ```
+
+Gateway 只用 Definition 做路由和调度；Runner 根据相同的 Provider ID 找到本地 Deployment，并使用本地执行配置创建 Provider。
 
 结果会归一化成统一 SearchDocument。
 
@@ -185,7 +194,7 @@ keepPageOpen: true
 
 1. 实现 SearchProvider；
 2. 暴露 ProviderFactory；
-3. 打包成 Runner Plugin，或注册到 Gateway Local Runtime；
+3. 打包成 Runner Plugin；
 4. 使用注入的 Transport / BrowserHost；
 5. 在 Gateway YAML 中增加 Provider instance；
 6. 加到 route，或在请求里显式指定 source。

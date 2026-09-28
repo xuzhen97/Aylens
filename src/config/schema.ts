@@ -25,7 +25,6 @@ const runtimeSelectorSchema = z.object({
 });
 
 const providerRuntimeSchema = z.union([
-  z.object({ mode: z.literal("local") }),
   z.object({ nodeId: z.string().min(1) }),
   z.object({ selector: runtimeSelectorSchema }),
 ]);
@@ -33,7 +32,12 @@ const providerRuntimeSchema = z.union([
 export const providerSchema = z.object({
   type: z.string().min(1),
   enabled: z.boolean().default(true),
-  runtime: providerRuntimeSchema.default({ mode: "local" }),
+  // Gateway-owned logical definition: only placement belongs here.
+  runtime: providerRuntimeSchema,
+});
+
+export const providerDeploymentSchema = z.object({
+  type: z.string().min(1),
   transport: z.object({
     primary: z.string().min(1),
     fallback: z.array(z.string().min(1)).default([]),
@@ -73,12 +77,10 @@ export const appConfigSchema = z.object({
     offlineAfterMs: z.number().int().positive().default(60_000),
     jobTimeoutMs: z.number().int().positive().default(30_000),
   }),
-  transports: z.record(z.string(), transportSchema).default({}),
   providers: z.record(z.string(), providerSchema).default({}),
   routes: z.record(z.string(), z.object({
     providers: z.array(z.string()).default([]),
   })).default({ default: { providers: [] } }),
-  browserProfiles: z.record(z.string(), browserProfileSchema).default({}),
 }).superRefine((config, ctx) => {
   for (const [routeId, route] of Object.entries(config.routes)) {
     for (const providerId of route.providers) {
@@ -92,41 +94,11 @@ export const appConfigSchema = z.object({
     }
   }
 
-  for (const [profileId, profile] of Object.entries(config.browserProfiles)) {
-    if (profile.mode === "cdp" && !profile.cdpEndpoint) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["browserProfiles", profileId, "cdpEndpoint"],
-        message: "cdpEndpoint is required when mode=cdp",
-      });
-    }
-
-    if (profile.transport && !(profile.transport in config.transports)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["browserProfiles", profileId, "transport"],
-        message: `Unknown local browser transport: ${profile.transport}`,
-      });
-    }
-  }
-
-  for (const [providerId, provider] of Object.entries(config.providers)) {
-    if (provider.transport && "mode" in provider.runtime && provider.runtime.mode === "local") {
-      for (const name of [provider.transport.primary, ...provider.transport.fallback]) {
-        if (!(name in config.transports)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["providers", providerId, "transport"],
-            message: `Unknown local transport: ${name}`,
-          });
-        }
-      }
-    }
-  }
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
 export type TransportConfig = z.infer<typeof transportSchema>;
 export type BrowserProfileConfig = z.infer<typeof browserProfileSchema>;
 export type ProviderConfig = z.infer<typeof providerSchema>;
+export type ProviderDeploymentConfig = z.infer<typeof providerDeploymentSchema>;
 export type RuntimeSelectorConfig = z.infer<typeof runtimeSelectorSchema>;

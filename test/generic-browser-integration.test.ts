@@ -50,8 +50,6 @@ describe("generic-browser Gateway/Runner flow", () => {
               profile: "generic-login",
             },
           },
-          browser: { profile: "generic-login" },
-          options: {},
         },
       },
       routes: { default: { providers: ["browserRead"] } },
@@ -80,8 +78,27 @@ describe("generic-browser Gateway/Runner flow", () => {
         http: true,
         browserAutomation: true,
       },
+      providers: {
+        browserRead: {
+          type: "generic-browser",
+          browser: { profile: "generic-login" },
+          options: {},
+        },
+      },
       transports: { direct: { type: "direct" } },
-      browserProfiles: {},
+      browserProfiles: {
+        "generic-login": {
+          browser: "chrome",
+          mode: "launch",
+          persistent: true,
+          userDataDir: "D:/profiles/generic-login",
+          maxConcurrency: 1,
+          interactive: true,
+          headless: false,
+          channel: "chrome",
+          args: [],
+        },
+      },
     });
 
     const loaded = await loadProviderPlugins(
@@ -134,6 +151,7 @@ describe("generic-browser Gateway/Runner flow", () => {
 
     const runtime: RunnerRuntime = {
       providers,
+      deployments: runnerConfig.providers,
       transports: new TransportRegistry(),
       profiles,
       browser,

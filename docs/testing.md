@@ -36,7 +36,7 @@ git diff --check
 
 ```text
 13 个测试文件
-42 个测试
+45 个测试
 全部通过
 ```
 
@@ -52,23 +52,24 @@ pnpm smoke:generic-browser
 
 | 测试文件 | 测试数 | 主要内容 |
 | --- | ---: | --- |
-| test/config.test.ts | 2 | 环境变量插值、Route / Provider 配置校验 |
-| test/runtime-registry.test.ts | 1 | Runtime capability 匹配与低负载选择 |
+| test/config.test.ts | 7 | 环境变量插值、Route / Provider 配置校验、Provider 必须显式声明 Runner 目标 |
+| test/runtime-registry.test.ts | 2 | Runtime capability 匹配与低负载选择、无匹配时报错 |
 | test/profile-manager.test.ts | 1 | Profile Lease、并发限制、释放 |
-| test/search-service.test.ts | 2 | 空 route、ProviderFactory 扩展、Audit |
+| test/search-service.test.ts | 4 | 空 route、经已连接 Runner 执行、Audit |
 | test/plugin-loader.test.ts | 1 | Runner Provider Plugin 动态加载 |
 | test/transports.test.ts | 3 | HTTP Proxy、SOCKS5、错误标准化 |
 | test/browser-host.test.ts | 2 | BrowserHost 复用、Lease、Runtime-local proxy |
-| test/runner-session-manager.test.ts | 1 | Runner 结构化错误跨协议保真 |
-| test/generic-browser-provider.test.ts | 4 | URL 校验、正文提取、截断、keepPageOpen |
+| test/runner-session-manager.test.ts | 4 | Runner 结构化错误跨协议保真 |
+| test/runner-reconnect.test.ts | 3 | Runner 重连与同一 id 接管 |
+| test/generic-browser-provider.test.ts | 5 | URL 校验、正文提取、截断、keepPageOpen、取消信号 |
 | test/generic-browser-integration.test.ts | 1 | Gateway/Runner WebSocket + generic-browser 结果 |
-| test/runner-integration.test.ts | 2 | Runner 注册、capability、动态 Plugin |
-| test/admin-ui.test.ts | 7 | Admin 多页面、主题、JS、鉴权、脱敏 |
+| test/runner-integration.test.ts | 4 | Runner 注册、capability、动态 Plugin |
+| test/admin-ui.test.ts | 8 | Admin 多页面、主题、JS、鉴权、脱敏 |
 
 总数：
 
 ```text
-2 + 1 + 1 + 2 + 1 + 3 + 2 + 1 + 4 + 1 + 2 + 7 = 27
+7 + 2 + 1 + 4 + 1 + 3 + 2 + 4 + 3 + 5 + 1 + 4 + 8 = 45
 ```
 
 ## 各层测试关注点
@@ -98,7 +99,7 @@ Profile Manager：
 SearchService：
 
 - 默认 route 无 Provider 时成功空结果
-- 注入新 ProviderFactory 不需要改 SearchService
+- 经已连接 Runner 执行 Provider
 - Audit 与 Provider metadata
 
 Plugin Loader：
@@ -146,7 +147,7 @@ Admin UI：
 - inline JavaScript 语法
 - Admin API Bearer 鉴权
 - 敏感配置脱敏
-- Browser Profile 安全输出
+- 响应中不出现 Gateway 本地 Profile
 
 ## Smoke Test 与自动测试的区别
 
@@ -192,7 +193,7 @@ pnpm smoke:generic-browser
 
 ## 测试通过不代表什么
 
-27 个自动测试通过代表当前代码边界在测试覆盖范围内工作。
+45 个自动测试通过代表当前代码边界在测试覆盖范围内工作。
 
 它不代表：
 
