@@ -79,6 +79,14 @@ function documentId(url) {
   return `doc_${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
+function cancelledError() {
+  return structuredError(
+    "TIMEOUT",
+    "Browser navigation was cancelled before it completed",
+    true,
+  );
+}
+
 export const genericBrowserFactory = {
   type: "generic-browser",
 
@@ -112,13 +120,17 @@ export const genericBrowserFactory = {
         }
 
         const requestedUrl = parseTargetUrl(request.query);
+        // Set when the Gateway gives up on this job, or the Runner is shutting
+        // down. Without it a cancelled job kept a browser profile leased until
+        // its own navigation timeout expired.
+        const { signal } = context;
 
         return services.browser.withProfile(
           profileId,
           context.jobId,
           async ({ context: browserContext }) => {
             const page = await browserContext.newPage();
-            let closePage = !options.keepPageOpen;
+            const closePage = !options.keepPageOpen;
 
             try {
               let response;
@@ -127,8 +139,10 @@ export const genericBrowserFactory = {
                 response = await page.goto(requestedUrl, {
                   waitUntil: options.waitUntil,
                   timeout: options.timeoutMs,
+                  signal,
                 });
               } catch (error) {
+                if (signal?.aborted) throw cancelledError();
                 throw structuredError(
                   "NETWORK_ERROR",
                   `Browser navigation failed: ${requestedUrl}`,
@@ -136,6 +150,8 @@ export const genericBrowserFactory = {
                   error,
                 );
               }
+
+              if (signal?.aborted) throw cancelledError();
 
               if (options.postLoadDelayMs > 0) {
                 await page.waitForTimeout(options.postLoadDelayMs);
@@ -153,6 +169,7 @@ export const genericBrowserFactory = {
                     .innerText({ timeout: options.extractionTimeoutMs }),
                 ]);
               } catch (error) {
+                if (signal?.aborted) throw cancelledError();
                 throw structuredError(
                   "CONTENT_UNAVAILABLE",
                   `Unable to extract page content with selector: ${options.textSelector}`,

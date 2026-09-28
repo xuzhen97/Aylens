@@ -1,6 +1,7 @@
 import type { GatewayContext } from "../../app/context.js";
 import type { AuditRecord } from "../../audit/audit-service.js";
 import type { BrowserProfileDefinition } from "../../browser/profile-manager.js";
+import { LOCAL_RUNTIME_ID } from "../../runtime/types.js";
 
 const SENSITIVE_QUERY_KEY = /^(?:access_?token|api_?key|auth|authorization|code|credential|key|password|secret|session|signature|token)$/i;
 const SENSITIVE_LABEL_KEY = /(?:token|secret|password|passwd|api.?key|credential|authorization|auth)/i;
@@ -58,7 +59,9 @@ export function toSafeBrowserProfile(
   return {
     id: profile.id,
     scope: "gateway-local" as const,
-    runtimeId: "local",
+    // Deliberately not a runtime id: these profiles live in the Gateway's own
+    // config and are not placed on any node. `scope` carries that distinction.
+    runtimeId: null,
     browser: profile.browser,
     mode: profile.mode,
     persistent: profile.persistent,
@@ -91,9 +94,16 @@ function toSafeAudit(record: AuditRecord) {
 
 export function buildAdminOverview(context: GatewayContext) {
   const runtimes = context.runtimes.list();
+
+  // The Gateway's own record is control-plane bookkeeping, not an execution
+  // node: it never heartbeats and cannot run any provider. It is reported as
+  // Gateway status (`gateway.localRuntime`) and kept out of the node list,
+  // because a node count that includes the process serving the page is noise.
+  const nodes = runtimes.filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID);
+  const localRuntime = runtimes.find((runtime) => runtime.id === LOCAL_RUNTIME_ID);
+
   const localProfiles = context.browserProfiles.list().map(toSafeBrowserProfile);
-  const remoteProfiles = runtimes
-    .filter((runtime) => runtime.id !== "local")
+  const remoteProfiles = nodes
     .flatMap((runtime) => runtime.capabilities.profiles.map((profileId) => ({
       id: profileId,
       scope: "runner" as const,
@@ -121,7 +131,7 @@ export function buildAdminOverview(context: GatewayContext) {
   }));
 
   const audits = context.audit.list(30).map(toSafeAudit);
-  const onlineRuntimes = runtimes.filter((runtime) =>
+  const onlineNodes = nodes.filter((runtime) =>
     runtime.status === "online" || runtime.status === "degraded"
   );
 
@@ -129,20 +139,19 @@ export function buildAdminOverview(context: GatewayContext) {
     generatedAt: Date.now(),
     gateway: {
       status: "ready" as const,
-      localRuntime: runtimes.find((runtime) => runtime.id === "local")?.status ?? "offline",
-      remoteRuntimes: runtimes.filter((runtime) => runtime.id !== "local").length,
+      localRuntime: localRuntime?.status ?? "offline",
+      remoteRuntimes: nodes.length,
     },
     summary: {
       providers: providers.length,
       enabledProviders: providers.filter((provider) => provider.enabled).length,
-      runtimes: runtimes.length,
-      onlineRuntimes: onlineRuntimes.length,
-      remoteRuntimes: runtimes.filter((runtime) => runtime.id !== "local").length,
+      runtimes: nodes.length,
+      onlineRuntimes: onlineNodes.length,
       browserProfiles: localProfiles.length + remoteProfiles.length,
       recentAudits: audits.length,
     },
     providers,
-    runtimes: runtimes.map((runtime) => ({
+    runtimes: nodes.map((runtime) => ({
       ...runtime,
       labels: redactLabels(runtime.labels),
     })),

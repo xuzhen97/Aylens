@@ -1,0 +1,10 @@
+# 依赖构建脚本白名单。
+#
+# allowBuilds 于 pnpm v10.26 引入，在 pnpm 11 取代了 onlyBuiltDependencies /
+# onlyBuiltDependenciesFile / neverBuiltDependencies / ignoredBuiltDependencies
+# —— 那几个旧字段在 pnpm 11 里会被静默忽略，所以不要改回旧写法。
+#
+# esbuild 的平台二进制由可选依赖 @esbuild/<platform> 提供，不依赖 postinstall，
+# 因此显式关闭它的构建脚本可以让安装更快更干净（已实测 transform 正常）。
+allowBuilds:
+  esbuild: false

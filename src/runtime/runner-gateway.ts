@@ -20,6 +20,12 @@ export function attachRunnerGateway(options: {
   app: FastifyInstance;
   path: string;
   tokens: Record<string, string>;
+  /**
+   * How long a Runner may go without a heartbeat before a new connection is
+   * allowed to take its id over. Without it a Runner that crashed without
+   * closing its socket would block its own replacement indefinitely.
+   */
+  heartbeatTimeoutMs: number;
   runtimes: RuntimeRegistry;
   sessions: RunnerSessionManager;
 }): WebSocketServer {
@@ -48,6 +54,20 @@ export function attachRunnerGateway(options: {
         }
         if (message.protocolVersion !== RUNNER_PROTOCOL_VERSION) {
           socket.close(1002, "protocol version mismatch");
+          return;
+        }
+
+        // Two live processes claiming one id would otherwise kick each other in
+        // a loop: every reconnect replaces the other session, forever. Reject
+        // the newcomer with a reason instead — unless the incumbent has stopped
+        // heartbeating, in which case it is gone and this one takes over.
+        const incumbent = options.runtimes.get(message.runnerId);
+        const incumbentIsFresh =
+          incumbent !== undefined &&
+          Date.now() - incumbent.lastSeenAt <= options.heartbeatTimeoutMs;
+
+        if (incumbentIsFresh && options.sessions.isAttached(message.runnerId)) {
+          socket.close(1013, `runner id already connected: ${message.runnerId}`);
           return;
         }
 

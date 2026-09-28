@@ -1,16 +1,34 @@
 import { loadRunnerConfig } from "./config.js";
-import { maintainConnection } from "./connect.js";
 import { AylensRunner } from "./runner.js";
 import { createRunnerRuntime } from "./runtime.js";
 
 const config = await loadRunnerConfig();
 const runtime = await createRunnerRuntime(config);
-const runner = new AylensRunner(config, runtime);
 
-let stopping = false;
+const runner = new AylensRunner(config, runtime, {
+  lifecycle: {
+    connected: (runnerId) => {
+      console.log(`Aylens Runner connected: ${runnerId}`);
+    },
+    disconnected: (reason) => {
+      console.log(`Aylens Runner disconnected: ${reason}`);
+    },
+    connectionFailed: (error, attempt, retryInMs) => {
+      console.error(
+        `Aylens Runner could not reach ${config.runner.gatewayUrl} ` +
+          `(attempt ${attempt}, retrying in ${retryInMs}ms): ${error.message}`,
+      );
+    },
+    reconnecting: (attempt, retryInMs) => {
+      console.log(`Aylens Runner reconnecting (attempt ${attempt}) in ${retryInMs}ms`);
+    },
+  },
+});
+
+let shuttingDown = false;
 const shutdown = async () => {
-  if (stopping) return;
-  stopping = true;
+  if (shuttingDown) return;
+  shuttingDown = true;
   await runner.close();
   process.exit(0);
 };
@@ -18,6 +36,5 @@ const shutdown = async () => {
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
 
-await maintainConnection(runner, () => stopping, {
-  onConnected: () => console.log(`Aylens Runner connected: ${config.runner.id}`),
-});
+// `serve()` runs until shutdown: it owns the reconnect loop.
+await runner.serve();

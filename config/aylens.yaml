@@ -9,7 +9,6 @@ auth:
   apiKey: "${AYLENS_API_KEY:-dev-key}"
   runnerTokens:
     dev-runner: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
-    windows-generic-01: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
 
 runtimeRegistry:
   heartbeatTimeoutMs: 30000
@@ -25,6 +24,8 @@ providers:
     type: generic-browser
     enabled: true
 
+    # 由 Runner 侧的 browserAutomation 能力承接，不带 os/labels 约束，
+    # 只要有一个在线 Runner 加载了 generic-browser 插件即可匹配。
     runtime:
       selector:
         providerType: generic-browser
@@ -42,6 +43,8 @@ providers:
       maxTextChars: 50000
       snippetChars: 500
       textSelector: body
+
+      # 手工建立登录态时设为 true，登录完成后改回 false，避免标签页堆积。
       keepPageOpen: false
 
 routes:
@@ -49,4 +52,5 @@ routes:
     providers:
       - generic-browser
 
+# gateway 本地 BrowserHost 不使用 Profile；浏览器由 Runner 侧提供。
 browserProfiles: {}

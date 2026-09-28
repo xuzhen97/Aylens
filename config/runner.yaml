@@ -1,12 +1,10 @@
 runner:
-  id: windows-generic-01
+  id: dev-runner
   gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect"
   token: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
   heartbeatMs: 10000
   maxJobs: 1
-
   labels:
-    role: generic-browser
     environment: development
 
 plugins:
@@ -24,10 +22,14 @@ transports:
   direct:
     type: direct
 
-  # Optional Runtime-local proxy:
-  # proxy-local:
+  # Example only:
+  # proxy-us:
+  #   type: http-proxy
+  #   url: "${PROXY_US_URL}"
+  #
+  # proxy-cn:
   #   type: socks5
-  #   url: "${PROXY_URL}"
+  #   url: "${PROXY_CN_URL}"
 
 browserProfiles:
   generic-login:
@@ -35,14 +37,14 @@ browserProfiles:
     mode: launch
     persistent: true
 
-    # Keep this as a dedicated Aylens automation profile.
-    userDataDir: "D:\\Aylens\\profiles\\generic-login"
+    # 相对仓库根目录；pnpm dev:runner 的 cwd 即仓库根。
+    userDataDir: "./.profiles/generic-login"
+
+    maxConcurrency: 1
+
+    # 需要人工登录目标站点时，改成 headless: false + interactive: true。
+    interactive: false
+    headless: true
 
     channel: chrome
-    headless: false
-    interactive: true
-    maxConcurrency: 1
     args: []
-
-    # Optional:
-    # transport: proxy-local

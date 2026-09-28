@@ -223,8 +223,10 @@ describe("admin UI", () => {
       summary: {
         providers: 1,
         enabledProviders: 1,
-        runtimes: 1,
-        onlineRuntimes: 1,
+        // No Runner is connected in this fixture, and the Gateway's own record
+        // is deliberately not counted as a node.
+        runtimes: 0,
+        onlineRuntimes: 0,
         browserProfiles: 1,
         recentAudits: 1,
       },
@@ -265,7 +267,8 @@ describe("admin UI", () => {
     const payload = overview.json();
     expect(payload.browserProfiles[0]).toMatchObject({
       id: "local-profile",
-      runtimeId: "local",
+      scope: "gateway-local",
+      runtimeId: null,
       browser: "chrome",
       activeLeases: 0,
       transport: "privateProxy",

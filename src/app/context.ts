@@ -8,6 +8,7 @@ import { HttpProxyTransportFactory } from "../transports/http-proxy.js";
 import { Socks5TransportFactory } from "../transports/socks5.js";
 import type { TransportFactory } from "../transports/types.js";
 import { RuntimeRegistry } from "../runtime/registry.js";
+import { LOCAL_RUNTIME_ID } from "../runtime/types.js";
 import { LocalRuntime } from "../runtime/local-runtime.js";
 import { RunnerSessionManager } from "../runtime/runner-session-manager.js";
 import { ExecutionDispatcher } from "../runtime/dispatcher.js";
@@ -61,7 +62,7 @@ export function createGatewayContext(
 
   const runtimes = new RuntimeRegistry(config.runtimeRegistry.offlineAfterMs);
   runtimes.upsert({
-    id: "local",
+    id: LOCAL_RUNTIME_ID,
     hostname: hostname(),
     os: normalizeOs(platform()),
     version: "0.1.0",

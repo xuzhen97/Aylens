@@ -153,6 +153,60 @@ describe("generic-browser provider", () => {
     expect(close).not.toHaveBeenCalled();
   });
 
+  it("forwards the cancellation signal and reports a cancelled job as such", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const close = vi.fn(async () => undefined);
+    const goto = vi.fn(async () => {
+      // Mimics Playwright rejecting once the signal fires.
+      throw new Error("navigation aborted");
+    });
+
+    const page = {
+      goto,
+      waitForTimeout: vi.fn(async () => undefined),
+      title: vi.fn(async () => "Example"),
+      url: vi.fn(() => "https://example.com/start"),
+      locator: vi.fn(() => ({
+        first: () => ({ innerText: async () => "body" }),
+      })),
+      close,
+    };
+
+    const { browser } = fakeBrowser(page);
+    const factory = await genericFactory();
+    const provider = factory.create(
+      "generic-browser",
+      providerSchema.parse({
+        type: "generic-browser",
+        browser: { profile: "generic-login" },
+        options: {},
+      }),
+      { transports: new TransportRegistry(), browser },
+    );
+
+    await expect(
+      provider.search(
+        {
+          requestId: "request-4",
+          traceId: "trace-4",
+          runtimeId: "runner-1",
+          jobId: "job-4",
+          signal: controller.signal,
+        },
+        { query: "https://example.com/start" },
+      ),
+    ).rejects.toMatchObject({ code: "TIMEOUT", retryable: true });
+
+    expect(goto).toHaveBeenCalledWith(
+      "https://example.com/start",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    // The page must still be closed so the profile lease is released.
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects non-http URLs with a structured error", async () => {
     const { browser } = fakeBrowser({});
     const factory = await genericFactory();

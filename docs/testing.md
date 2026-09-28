@@ -5,25 +5,25 @@
 全部测试：
 
 ```bash
-npm test
+pnpm test
 ```
 
 TypeScript：
 
 ```bash
-npm run typecheck
+pnpm typecheck
 ```
 
 Production build：
 
 ```bash
-npm run build
+pnpm build
 ```
 
 真实 Chrome smoke：
 
 ```bash
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 Git whitespace 检查：
@@ -35,8 +35,8 @@ git diff --check
 ## 当前基线
 
 ```text
-12 个测试文件
-36 个测试
+13 个测试文件
+42 个测试
 全部通过
 ```
 
@@ -45,30 +45,30 @@ Vitest 默认不会启动真实 Google Chrome。浏览器相关单元/组件测�
 真实 Chrome 验证使用：
 
 ```text
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 ## 测试矩阵
 
 | 测试文件 | 测试数 | 主要内容 |
 | --- | ---: | --- |
-| test/config.test.ts | 5 | 环境变量插值、YAML 注释边界、默认 generic-browser 配置、Route / Provider 校验 |
+| test/config.test.ts | 2 | 环境变量插值、Route / Provider 配置校验 |
 | test/runtime-registry.test.ts | 1 | Runtime capability 匹配与低负载选择 |
 | test/profile-manager.test.ts | 1 | Profile Lease、并发限制、释放 |
-| test/search-service.test.ts | 3 | 空 route、ProviderFactory 扩展、失败错误详情与 Runtime、Audit |
+| test/search-service.test.ts | 2 | 空 route、ProviderFactory 扩展、Audit |
 | test/plugin-loader.test.ts | 1 | Runner Provider Plugin 动态加载 |
 | test/transports.test.ts | 3 | HTTP Proxy、SOCKS5、错误标准化 |
 | test/browser-host.test.ts | 2 | BrowserHost 复用、Lease、Runtime-local proxy |
 | test/runner-session-manager.test.ts | 1 | Runner 结构化错误跨协议保真 |
 | test/generic-browser-provider.test.ts | 4 | URL 校验、正文提取、截断、keepPageOpen |
 | test/generic-browser-integration.test.ts | 1 | Gateway/Runner WebSocket + generic-browser 结果 |
-| test/runner-integration.test.ts | 5 | Runner 首次连接重试、断线重连、注册、capability、动态 Plugin |
-| test/admin-ui.test.ts | 9 | Admin 多页面、主题、JS、失败诊断、鉴权、脱敏 |
+| test/runner-integration.test.ts | 2 | Runner 注册、capability、动态 Plugin |
+| test/admin-ui.test.ts | 7 | Admin 多页面、主题、JS、鉴权、脱敏 |
 
 总数：
 
 ```text
-5 + 1 + 1 + 3 + 1 + 3 + 2 + 1 + 4 + 1 + 5 + 9 = 36
+2 + 1 + 1 + 2 + 1 + 3 + 2 + 1 + 4 + 1 + 2 + 7 = 27
 ```
 
 ## 各层测试关注点
@@ -150,7 +150,7 @@ Admin UI：
 
 ## Smoke Test 与自动测试的区别
 
-npm test：
+pnpm test：
 
 - 快
 - 稳定
@@ -158,7 +158,7 @@ npm test：
 - 适合 CI
 - 验证边界与协议
 
-npm run smoke:generic-browser：
+pnpm smoke:generic-browser：
 
 - 启动真实 Google Chrome
 - 使用 persistent BrowserContext
@@ -177,22 +177,22 @@ npm run smoke:generic-browser：
 开发过程中：
 
 ```text
-npm run typecheck
-npm test
-npm run build
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 修改浏览器 Runtime 后，再执行：
 
 ```text
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 发布或重要重构前，再按 [operations.md](./operations.md) 做一次人工 Gateway/Runner 验收。
 
 ## 测试通过不代表什么
 
-36 个自动测试通过代表当前代码边界在测试覆盖范围内工作。
+27 个自动测试通过代表当前代码边界在测试覆盖范围内工作。
 
 它不代表：
 
