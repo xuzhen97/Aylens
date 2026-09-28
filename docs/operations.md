@@ -249,8 +249,8 @@ Aylens Runner reconnecting (attempt 1) in 941ms
 Aylens Runner could not reach ws://127.0.0.1:3000/v1/runners/connect (attempt 2, retrying in 1878ms): connect ECONNREFUSED
 ```
 
-真正要查的是 Gateway 是否还在跑（`pnpm dev`）。注意 Gateway 重启时偶尔会撞 `EADDRINUSE`，
-这时 `tsx watch` 不会自己重试 —— 用 `pnpm dev:all` 可以自动把它拉起来。
+真正要查的是 Gateway 是否还在跑（推荐用 `pnpm dev:all`，它会自动把 Gateway 拉回来）。注意 Gateway 重启时偶尔会撞 `EADDRINUSE`，
+这时 `tsx watch` 不会自己重试 —— 这正是 `pnpm dev:all` 要接管的场景。
 
 ### 同 id 的 Runner 被拒绝（1013）
 
@@ -285,7 +285,19 @@ Aylens Runner disconnected: Gateway closed the connection (1013 runner id alread
 
 ### Chrome 无法启动
 
-检查：
+典型错误：
+
+```json
+{"code":"BROWSER_START_FAILED","message":"Failed to open browser profile: generic-login","retryable":true}
+```
+
+这里的 `retryable: true` 是有误导性的：如果原因是 Profile 被占用，重试必然还是失败。
+
+最常见的原因是**残留的孤儿 Chrome 仍占着 userDataDir**。Chrome 是按 Profile 常驻缓存的，
+只在 Runner 优雅退出时关闭；硬杀 Runner（关终端窗口、`taskkill /F`、进程崩溃）会把它留下来。
+`pnpm dev:all` 会在拉起 Runner 之前自动回收命令行里带本仓库路径的 Chrome。
+
+其余检查：
 
 - 本机是否安装 Google Chrome
 - Profile 是否被其他 Chrome 占用
@@ -302,7 +314,17 @@ Aylens Runner disconnected: Gateway closed the connection (1013 runner id alread
 maxConcurrency = 1
 ```
 
-等待前一个任务释放 Lease，或使用不同 Profile。
+Lease 是**立刻拒绝、不排队**的：并发请求不会等待，而是直接收到 PROFILE_BUSY。
+
+处理：
+
+- 等当前任务结束后重试；
+- 或调大该 Profile 的 `maxConcurrency`（需确认目标站点能承受同一账号并发）；
+- 或为并发场景准备多个不同 Profile。
+
+如果某个任务长时不释放 Lease，先看它是不是已经超时：Gateway 超时会下发 CANCEL，
+Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检查 `jobTimeoutMs`（Gateway）
+是否小于该页面的实际耗时，以及 `timeoutMs`（Provider options）是否设得过大。
 
 ### 页面返回空文本
 
@@ -339,3 +361,10 @@ maxConcurrency = 1
 9. 人工登录后 authenticated page 能读取；
 10. Runner 重启后 persistent profile 登录态仍存在；
 11. Admin UI 不暴露 API Key、Runner Token、代理密码、本地 Chrome 路径。
+
+### 生命周期保障
+
+1. 杀掉 Gateway 再重新启动，Runner **无需人工干预**自己重连，检索随后恢复；
+2. 启第二个同 id 的 Runner，它被 `1013 runner id already connected` 拒绝；第一个不受影响，两者也不再互相踢；
+3. 让一次检索超时（例如把 `jobTimeoutMs` 设小，或指向一个不响应的地址）：超时后 Runtime 容量回到 0、
+   Browser Profile Lease 被释放，紧接着的检索能立刻成功，而不是 PROFILE_BUSY。
