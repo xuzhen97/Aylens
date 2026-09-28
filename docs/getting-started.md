@@ -30,21 +30,21 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway。
 要求：
 
 - Node.js 24 或更高版本
-- npm
+- pnpm 11
 - 如需真实浏览器测试：本机安装 Google Chrome
 
 安装依赖：
 
 ```bash
-npm install
+pnpm install
 ```
 
 基础验证：
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 ## 最小启动
@@ -52,7 +52,7 @@ npm run build
 启动 Gateway：
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 默认配置：
@@ -64,7 +64,7 @@ config/aylens.yaml
 启动 Runner：
 
 ```bash
-npm run dev:runner
+pnpm dev:runner
 ```
 
 默认配置：
@@ -91,7 +91,9 @@ http://127.0.0.1:3000/admin
 dev-key
 ```
 
-默认配置没有 Provider，因此 /v1/search 返回成功但空结果，这是预期行为。
+默认配置没有任何 Provider 时，/v1/search 会成功返回空结果。
+本仓库的默认配置已经把 generic-browser 验证 Provider 接进 `routes.default`，
+所以请同时启动 Runner，否则 /v1/search 会报找不到可用 Runtime。
 
 ## generic-browser 快速验证
 
@@ -109,7 +111,7 @@ Windows PowerShell 窗口 1：
 $env:AYLENS_CONFIG="./config/examples/generic-browser.gateway.yaml"
 $env:AYLENS_API_KEY="dev-key"
 $env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-npm run dev
+pnpm dev
 ```
 
 Windows PowerShell 窗口 2：
@@ -117,7 +119,7 @@ Windows PowerShell 窗口 2：
 ```powershell
 $env:AYLENS_RUNNER_CONFIG="./config/examples/generic-browser.runner.yaml"
 $env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-npm run dev:runner
+pnpm dev:runner
 ```
 
 确认 Runner：
@@ -139,7 +141,7 @@ curl.exe -X POST http://127.0.0.1:3000/v1/search `
 也可以执行真实 Chrome smoke test：
 
 ```bash
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 更完整的 Runner、人工登录态和故障排查见 [operations.md](./operations.md)。

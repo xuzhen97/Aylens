@@ -1,5 +1,6 @@
 import type { RuntimeSelectorConfig } from "../config/schema.js";
 import { RetrievalError } from "../core/errors.js";
+import { LOCAL_RUNTIME_ID } from "./types.js";
 import type { RuntimeRecord } from "./types.js";
 
 function matchesSelector(runtime: RuntimeRecord, selector: RuntimeSelectorConfig): boolean {
@@ -42,7 +43,7 @@ export class RuntimeRegistry {
 
   sweep(now = Date.now()): void {
     for (const runtime of this.runtimes.values()) {
-      if (runtime.id === "local" || runtime.status === "draining") continue;
+      if (runtime.id === LOCAL_RUNTIME_ID || runtime.status === "draining") continue;
       if (now - runtime.lastSeenAt > this.offlineAfterMs) {
         this.runtimes.set(runtime.id, { ...runtime, status: "offline" });
       }
@@ -57,7 +58,12 @@ export class RuntimeRegistry {
   select(selector: RuntimeSelectorConfig): RuntimeRecord {
     this.sweep();
     const candidates = [...this.runtimes.values()]
-      .filter((runtime) => matchesSelector(runtime, selector))
+      // The Gateway's own record is not a placement target: it advertises no
+      // provider types, and `runtime.mode = "local"` never consults this lookup.
+      // Leaving it in the pool let a selector that only constrained `os` (or
+      // nothing but labels) match it, win the load tie by insertion order, and
+      // then fail to execute anything.
+      .filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID && matchesSelector(runtime, selector))
       .sort((a, b) => (a.capacity.activeJobs / a.capacity.maxJobs) - (b.capacity.activeJobs / b.capacity.maxJobs));
 
     const runtime = candidates[0];

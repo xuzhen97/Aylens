@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { GatewayContext } from "../../app/context.js";
 import { RetrievalError, toErrorPayload } from "../../core/errors.js";
 import { attachRunnerGateway } from "../../runtime/runner-gateway.js";
+import { LOCAL_RUNTIME_ID } from "../../runtime/types.js";
 import { renderAdminPage, type AdminPage } from "./admin-page.js";
 import { buildAdminOverview, toSafeBrowserProfile } from "./admin-data.js";
 
@@ -59,8 +60,8 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
 
   app.get("/ready", async () => ({
     status: "ready",
-    localRuntime: "online",
-    remoteRuntimes: context.runtimes.list().filter((runtime) => runtime.id !== "local").length,
+    localRuntime: context.runtimes.get(LOCAL_RUNTIME_ID)?.status ?? "offline",
+    remoteRuntimes: context.runtimes.list().filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID).length,
   }));
 
   app.addHook("preHandler", async (request) => {
@@ -84,7 +85,11 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
     })),
   }));
 
-  app.get("/v1/runtimes", async () => ({ runtimes: context.runtimes.list() }));
+  // Node listing: the Gateway's own record is reported by /ready as
+  // `localRuntime`, not as a schedulable node.
+  app.get("/v1/runtimes", async () => ({
+    runtimes: context.runtimes.list().filter((runtime) => runtime.id !== LOCAL_RUNTIME_ID),
+  }));
 
   app.get("/v1/admin/overview", async () => buildAdminOverview(context));
 
@@ -106,6 +111,7 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
     app,
     path: context.config.server.runnerPath,
     tokens: context.config.auth.runnerTokens,
+    heartbeatTimeoutMs: context.config.runtimeRegistry.heartbeatTimeoutMs,
     runtimes: context.runtimes,
     sessions: context.runnerSessions,
   });

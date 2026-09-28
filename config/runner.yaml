@@ -9,12 +9,14 @@ runner:
 
 plugins:
   baseDir: "."
-  modules: []
+  modules:
+    - "./plugins/generic-browser/index.mjs"
 
 capabilities:
-  browsers: []
+  browsers:
+    - chrome
   http: true
-  browserAutomation: false
+  browserAutomation: true
 
 transports:
   direct:
@@ -29,5 +31,20 @@ transports:
   #   type: socks5
   #   url: "${PROXY_CN_URL}"
 
-browserProfiles: {}
+browserProfiles:
+  generic-login:
+    browser: chrome
+    mode: launch
+    persistent: true
 
+    # 相对仓库根目录；pnpm dev:runner 的 cwd 即仓库根。
+    userDataDir: "./.profiles/generic-login"
+
+    maxConcurrency: 1
+
+    # 需要人工登录目标站点时，改成 headless: false + interactive: true。
+    interactive: false
+    headless: true
+
+    channel: chrome
+    args: []

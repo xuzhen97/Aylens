@@ -1,9 +1,10 @@
 import type { ProviderRegistry } from "../providers/registry.js";
 import type { ProviderFactoryContext } from "../providers/types.js";
+import { LOCAL_RUNTIME_ID } from "./types.js";
 import type { ExecutionRuntime, RuntimeExecutionRequest, RuntimeExecutionResult } from "./types.js";
 
 export class LocalRuntime implements ExecutionRuntime {
-  readonly id = "local";
+  readonly id = LOCAL_RUNTIME_ID;
 
   constructor(
     private readonly providers: ProviderRegistry,

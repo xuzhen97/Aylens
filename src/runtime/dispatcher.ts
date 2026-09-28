@@ -5,6 +5,7 @@ import type { SearchRequest } from "../contracts/search.js";
 import type { RuntimeRegistry } from "./registry.js";
 import type { LocalRuntime } from "./local-runtime.js";
 import type { RunnerSessionManager } from "./runner-session-manager.js";
+import { LOCAL_RUNTIME_ID } from "./types.js";
 import type { RuntimeExecutionRequest, RuntimeExecutionResult } from "./types.js";
 
 export class ExecutionDispatcher {
@@ -41,6 +42,16 @@ export class ExecutionDispatcher {
     }
 
     if ("nodeId" in target) {
+      // `nodeId` names a remote Runner. The Gateway's own record is reachable
+      // through `runtime.mode = "local"` instead, and pinning it here would only
+      // produce a confusing "Runtime is not connected: local".
+      if (target.nodeId === LOCAL_RUNTIME_ID) {
+        throw new RetrievalError(
+          "INTERNAL_ERROR",
+          'runtime.nodeId cannot be "local"; use runtime.mode = "local" to execute on the Gateway',
+        );
+      }
+
       const runtime = this.runtimes.get(target.nodeId);
       if (!runtime || runtime.status === "offline") {
         throw new RetrievalError("RUNTIME_OFFLINE", `Runtime is offline: ${target.nodeId}`, { retryable: true });

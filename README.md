@@ -51,28 +51,39 @@ Proxy credential、Chrome Profile、Cookie、Local Storage 等敏感状态保留
 安装：
 
 ```bash
-npm install
+pnpm install
 ```
 
 验证：
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 启动 Gateway：
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 启动 Runner：
 
 ```bash
-npm run dev:runner
+pnpm dev:runner
 ```
+
+一次启动两者（Gateway + 测试 Runner，推荐）：
+
+```bash
+pnpm dev:all
+```
+
+`dev:all` 会先等 Gateway `/ready` 通过再拉起 Runner，之后持续监督两个进程：
+任何一侧掉线都会自动重新拉起（包括 `tsx watch` 重载后撞 `EADDRINUSE` 不再恢复的 Gateway）。
+Runner 自身也带指数退避重连，所以先起 Runner、后起 Gateway 同样可行。
+之后它持续监督两个进程：任何一侧因 `tsx watch` 重载而掉线，都会自动重新拉起。
 
 默认配置：
 
@@ -99,7 +110,10 @@ http://127.0.0.1:3000/admin
 dev-key
 ```
 
-默认配置没有 Provider，所以 /v1/search 成功返回空结果是正常行为。
+默认配置已把 generic-browser 验证 Provider 接入 `routes.default`，
+同时 Runner 侧默认加载 `plugins/generic-browser/index.mjs` 与 `generic-login` Profile。
+两个进程都起来后，Admin UI 的 Providers 显示 1/1、Runtimes 显示 2/2；
+只起 Gateway 不起 Runner，/v1/search 会报无可用 Runtime。
 
 更完整的启动说明见 [docs/getting-started.md](./docs/getting-started.md)。
 
@@ -121,7 +135,7 @@ config/examples/generic-browser.runner.yaml
 真实 Chrome smoke test：
 
 ```bash
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 它会验证：
@@ -182,21 +196,21 @@ MCP 当前只提供 tool adapter definitions，还没有完整 MCP SDK server / 
 ## 常用命令
 
 ```text
-npm run dev
-npm run dev:runner
+pnpm dev
+pnpm dev:runner
 
-npm run typecheck
-npm test
-npm run build
+pnpm typecheck
+pnpm test
+pnpm build
 
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 当前自动测试基线：
 
 ```text
-12 个测试文件
-27 个测试
+13 个测试文件
+42 个测试
 ```
 
 详见 [docs/testing.md](./docs/testing.md)。

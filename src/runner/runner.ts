@@ -11,30 +11,84 @@ import {
   RUNNER_PROTOCOL_VERSION,
 } from "../runtime/protocol.js";
 
+const DEFAULT_RECONNECT_BASE_MS = 1_000;
+const DEFAULT_RECONNECT_MAX_MS = 30_000;
+
 function normalizeOs(value: NodeJS.Platform): "windows" | "linux" | "darwin" {
   if (value === "win32") return "windows";
   if (value === "darwin") return "darwin";
   return "linux";
 }
 
+function asError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
+export interface RunnerLifecycle {
+  connected?(runnerId: string): void;
+  disconnected?(reason: string): void;
+  /** A connection attempt failed before registering; a retry is scheduled. */
+  connectionFailed?(error: Error, attempt: number, retryInMs: number): void;
+  /** An established connection was lost; a retry is scheduled. */
+  reconnecting?(attempt: number, retryInMs: number): void;
+}
+
+export interface RunnerOptions {
+  lifecycle?: RunnerLifecycle;
+  /** Reconnect backoff bounds. Defaults to a 1s base with a 30s cap. */
+  reconnect?: { baseDelayMs?: number; maxDelayMs?: number };
+}
+
 export class AylensRunner {
   private socket?: WebSocket;
-  private heartbeat?: NodeJS.Timeout;
+  private heartbeat?: NodeJS.Timeout | undefined;
   private activeJobs = 0;
+  private closing = false;
+  private attempt = 0;
+  private waitHandle?: { wake: () => void } | undefined;
+  private disconnect: Promise<string> = Promise.resolve("not connected");
+  private resolveDisconnect: (reason: string) => void = () => {};
+
+  /** executionId -> controller, so a Gateway CANCEL can stop the real work. */
+  private readonly inFlight = new Map<string, AbortController>();
 
   constructor(
     private readonly config: RunnerConfig,
     private readonly runtime: RunnerRuntime,
+    private readonly options: RunnerOptions = {},
   ) {}
 
+  /**
+   * A single connection attempt. Resolves once the Gateway answers REGISTER with
+   * REGISTERED.
+   *
+   * Rejects on any failure before that, *including a clean close*: the Gateway
+   * refuses an unauthorized or protocol-mismatched Runner by closing the socket
+   * with a code and never emits `error`, so waiting for `error` alone left this
+   * promise pending forever — a wrong token looked like a silent hang.
+   */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      this.disconnect = new Promise<string>((settle) => {
+        this.resolveDisconnect = settle;
+      });
+
       const socket = new WebSocket(this.config.runner.gatewayUrl, {
         headers: { authorization: `Bearer ${this.config.runner.token}` },
       });
       this.socket = socket;
 
-      socket.once("error", reject);
+      let settled = false;
+
+      const fail = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+
+      socket.on("error", (error: unknown) => {
+        fail(asError(error));
+      });
 
       socket.on("open", () => {
         socket.send(JSON.stringify(this.registrationMessage()));
@@ -53,7 +107,8 @@ export class AylensRunner {
         const message = parsed.data;
 
         if (message.type === "REGISTERED") {
-          socket.removeListener("error", reject);
+          if (settled) return;
+          settled = true;
           this.startHeartbeat();
           resolve();
           return;
@@ -61,19 +116,116 @@ export class AylensRunner {
 
         if (message.type === "EXECUTE") {
           void this.handleExecute(socket, message);
+          return;
+        }
+
+        if (message.type === "CANCEL") {
+          this.cancelExecution(message.executionId);
         }
       });
 
-      socket.on("close", () => {
-        if (this.heartbeat) clearInterval(this.heartbeat);
+      socket.on("close", (code, reason) => {
+        this.stopHeartbeat();
+        // In-flight results can no longer be delivered, and their provider work
+        // would otherwise keep a browser profile leased for nobody.
+        this.abortInFlight("Runner lost its Gateway connection");
+
+        const text = `Gateway closed the connection (${code}${
+          reason.length > 0 ? ` ${reason.toString()}` : ""
+        })`;
+        this.resolveDisconnect(text);
+
+        fail(new Error(text));
       });
     });
   }
 
+  /**
+   * Connects and keeps reconnecting until `close()`.
+   *
+   * `ws` never retries on its own and the Gateway only notices a dead Runner
+   * through a heartbeat timeout, so without this loop every Gateway restart left
+   * the Runner silently alive but unreachable.
+   */
+  async serve(): Promise<void> {
+    while (!this.closing) {
+      try {
+        await this.connect();
+      } catch (error) {
+        if (this.closing) return;
+        this.attempt += 1;
+        const retryInMs = this.backoffMs(this.attempt);
+        this.options.lifecycle?.connectionFailed?.(asError(error), this.attempt, retryInMs);
+        await this.wait(retryInMs);
+        continue;
+      }
+
+      this.attempt = 0;
+      this.options.lifecycle?.connected?.(this.config.runner.id);
+
+      const reason = await this.disconnect;
+      if (this.closing) return;
+
+      this.options.lifecycle?.disconnected?.(reason);
+      this.attempt += 1;
+      const retryInMs = this.backoffMs(this.attempt);
+      this.options.lifecycle?.reconnecting?.(this.attempt, retryInMs);
+      await this.wait(retryInMs);
+    }
+  }
+
   async close(): Promise<void> {
-    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.closing = true;
+    this.waitHandle?.wake();
+    this.waitHandle = undefined;
+    this.stopHeartbeat();
+    this.abortInFlight("Runner is shutting down");
     this.socket?.close(1000, "runner shutting down");
     await this.runtime.close();
+  }
+
+  private backoffMs(attempt: number): number {
+    const base = this.options.reconnect?.baseDelayMs ?? DEFAULT_RECONNECT_BASE_MS;
+    const max = this.options.reconnect?.maxDelayMs ?? DEFAULT_RECONNECT_MAX_MS;
+    const ceiling = Math.min(max, base * 2 ** (attempt - 1));
+    // Half fixed, half random: keeps a fleet of Runners from returning in lockstep.
+    return Math.round(ceiling / 2 + Math.random() * (ceiling / 2));
+  }
+
+  private wait(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.waitHandle = undefined;
+        resolve();
+      }, ms);
+
+      this.waitHandle = {
+        wake: () => {
+          clearTimeout(timer);
+          this.waitHandle = undefined;
+          resolve();
+        },
+      };
+    });
+  }
+
+  private cancelExecution(executionId: string): void {
+    const controller = this.inFlight.get(executionId);
+    if (controller && !controller.signal.aborted) {
+      controller.abort(new Error("Cancelled by the Gateway"));
+    }
+  }
+
+  private abortInFlight(reason: string): void {
+    for (const controller of this.inFlight.values()) {
+      if (!controller.signal.aborted) controller.abort(new Error(reason));
+    }
+    this.inFlight.clear();
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = undefined;
   }
 
   private async handleExecute(
@@ -90,6 +242,9 @@ export class AylensRunner {
     }
 
     this.activeJobs += 1;
+    const controller = new AbortController();
+    this.inFlight.set(message.executionId, controller);
+
     let released = false;
     const releaseCapacity = () => {
       if (released) return;
@@ -97,6 +252,7 @@ export class AylensRunner {
       this.activeJobs = Math.max(0, this.activeJobs - 1);
       this.sendHeartbeat(socket);
     };
+
     socket.send(JSON.stringify({
       type: "JOB_ACCEPTED",
       messageId: createId("msg"),
@@ -139,6 +295,7 @@ export class AylensRunner {
           traceId: message.traceId,
           runtimeId: this.config.runner.id,
           jobId: message.jobId,
+          signal: controller.signal,
         },
         request,
       );
@@ -159,7 +316,21 @@ export class AylensRunner {
       }));
     } catch (error) {
       releaseCapacity();
-      this.sendJobError(socket, message, toErrorPayload(error));
+      this.sendJobError(
+        socket,
+        message,
+        controller.signal.aborted
+          ? {
+              // The Gateway has already dropped this job, so it ignores the
+              // reply; TIMEOUT is simply the closest code in the shared enum.
+              code: "TIMEOUT",
+              message: "Job was cancelled before it completed",
+              retryable: true,
+            }
+          : toErrorPayload(error),
+      );
+    } finally {
+      this.inFlight.delete(message.executionId);
     }
   }
 
@@ -196,6 +367,7 @@ export class AylensRunner {
   }
 
   private startHeartbeat(): void {
+    this.stopHeartbeat();
     this.heartbeat = setInterval(() => {
       if (this.socket?.readyState !== WebSocket.OPEN) return;
       this.sendHeartbeat(this.socket);

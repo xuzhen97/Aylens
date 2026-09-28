@@ -8,6 +8,12 @@ export interface ProviderContext {
   traceId: string;
   runtimeId: string;
   jobId?: string | undefined;
+  /**
+   * Aborted when the execution is cancelled — the Gateway gave up on the job,
+   * or the Runner is shutting down. Providers that can honour it should; the
+   * option is additive so existing plugins keep working unchanged.
+   */
+  signal?: AbortSignal | undefined;
 }
 
 export interface SearchProvider {

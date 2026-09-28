@@ -5,25 +5,25 @@
 全部测试：
 
 ```bash
-npm test
+pnpm test
 ```
 
 TypeScript：
 
 ```bash
-npm run typecheck
+pnpm typecheck
 ```
 
 Production build：
 
 ```bash
-npm run build
+pnpm build
 ```
 
 真实 Chrome smoke：
 
 ```bash
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 Git whitespace 检查：
@@ -35,8 +35,8 @@ git diff --check
 ## 当前基线
 
 ```text
-12 个测试文件
-27 个测试
+13 个测试文件
+42 个测试
 全部通过
 ```
 
@@ -45,7 +45,7 @@ Vitest 默认不会启动真实 Google Chrome。浏览器相关单元/组件测�
 真实 Chrome 验证使用：
 
 ```text
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 ## 测试矩阵
@@ -150,7 +150,7 @@ Admin UI：
 
 ## Smoke Test 与自动测试的区别
 
-npm test：
+pnpm test：
 
 - 快
 - 稳定
@@ -158,7 +158,7 @@ npm test：
 - 适合 CI
 - 验证边界与协议
 
-npm run smoke:generic-browser：
+pnpm smoke:generic-browser：
 
 - 启动真实 Google Chrome
 - 使用 persistent BrowserContext
@@ -177,15 +177,15 @@ npm run smoke:generic-browser：
 开发过程中：
 
 ```text
-npm run typecheck
-npm test
-npm run build
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 修改浏览器 Runtime 后，再执行：
 
 ```text
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 发布或重要重构前，再按 [operations.md](./operations.md) 做一次人工 Gateway/Runner 验收。

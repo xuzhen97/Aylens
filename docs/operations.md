@@ -15,34 +15,36 @@ Gateway
 ## 1. 基础检查
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run build
+pnpm install
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 当前测试基线：
 
 ```text
-12 个测试文件
-27 个测试
+13 个测试文件
+42 个测试
 ```
 
-## 2. 启动 generic-browser Gateway
+## 2. 启动 Gateway 与 Runner（推荐）
 
-Windows PowerShell：
+默认配置已经接好 generic-browser —— Gateway 侧是 `config/aylens.yaml` 的 `providers` + `routes.default`，
+Runner 侧是 `config/runner.yaml` 的 `plugins.modules` + `generic-login` Profile —— 因此一条命令即可：
 
 ```powershell
-$env:AYLENS_CONFIG="./config/examples/generic-browser.gateway.yaml"
-$env:AYLENS_API_KEY="dev-key"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-npm run dev
+pnpm dev:all
 ```
 
-预期：
+它会先等 Gateway `/ready` 通过再拉起 Runner，之后持续监督两者：任何一侧掉线都会自动重新拉起。
+
+预期输出：
 
 ```text
-http://127.0.0.1:3000
+[dev:all] gateway is up on http://127.0.0.1:3000
+[runner] Aylens Runner connected: dev-runner
+[dev:all] gateway + runner are ready
 ```
 
 健康检查：
@@ -52,17 +54,39 @@ curl.exe http://127.0.0.1:3000/health
 curl.exe http://127.0.0.1:3000/ready
 ```
 
-## 3. 启动 Windows Runner
+`/ready` 的 `remoteRuntimes` 应为 `1`。Admin UI：
 
-另一个 PowerShell：
-
-```powershell
-$env:AYLENS_RUNNER_CONFIG="./config/examples/generic-browser.runner.yaml"
-$env:AYLENS_RUNNER_TOKEN="dev-runner-token"
-npm run dev:runner
+```text
+http://127.0.0.1:3000/admin
 ```
 
-Runner 应上报：
+## 3. 分开启动（排查时用）
+
+需要单独观察某一侧、或要换一套配置时，开两个终端：
+
+终端 1：
+
+```powershell
+pnpm dev
+```
+
+终端 2：
+
+```powershell
+pnpm dev:runner
+```
+
+两边默认都用 `config/aylens.yaml` / `config/runner.yaml`。要换配置就用环境变量：
+
+```powershell
+$env:AYLENS_CONFIG="./config/examples/generic-browser.gateway.yaml"
+$env:AYLENS_RUNNER_CONFIG="./config/examples/generic-browser.runner.yaml"
+```
+
+注意 `config/examples/generic-browser.runner.yaml` 的 `userDataDir` 写的是
+`D:\Aylens\profiles\generic-login`，与默认的 `./.profiles/generic-login` 不是同一个目录，用之前先按需修改。
+
+Runner 注册后应上报：
 
 - Provider type：generic-browser
 - Browser：chrome
@@ -107,7 +131,7 @@ curl.exe -X POST http://127.0.0.1:3000/v1/search `
 ## 6. 自动真实 Chrome smoke test
 
 ```bash
-npm run smoke:generic-browser
+pnpm smoke:generic-browser
 ```
 
 这个脚本会：
@@ -124,15 +148,17 @@ npm run smoke:generic-browser
 
 ## 7. 验证人工登录态
 
-示例 Runner Profile：
+默认 Runner Profile 是 `generic-login`，目录在仓库内的 `./.profiles/generic-login`
+（`config/runner.yaml` 的 `browserProfiles.generic-login.userDataDir`），不要指向日常 Chrome Profile。
 
-```text
-D:\Aylens\profiles\generic-login
+默认是 `headless: true`，人工登录看不到窗口，需要先改成可见 + 交互模式：
+
+```yaml
+    headless: false
+    interactive: true
 ```
 
-不要使用日常 Chrome Profile。
-
-Gateway 示例配置中可临时设置：
+Gateway 侧（`config/aylens.yaml`）可临时设置：
 
 ```yaml
 keepPageOpen: true
@@ -205,6 +231,39 @@ options:
 - Runner ID 是否与 token map key 对应
 - WebSocket 是否被代理/防火墙阻断
 
+Token 或 ID 对不上时 Gateway 会用 `1008 unauthorized runner` 关掉连接，日志表现为：
+
+```text
+Aylens Runner disconnected: Gateway closed the connection (1008 unauthorized runner)
+```
+
+Runner 会继续重试，但永远不会成功 —— 这时要改配置，不是等它。
+
+### Runner 反复重连
+
+Runner 自带指数退避重连（1s 起步、30s 封顶），以下日志都属于正常重连：
+
+```text
+Aylens Runner disconnected: Gateway closed the connection (1006)
+Aylens Runner reconnecting (attempt 1) in 941ms
+Aylens Runner could not reach ws://127.0.0.1:3000/v1/runners/connect (attempt 2, retrying in 1878ms): connect ECONNREFUSED
+```
+
+真正要查的是 Gateway 是否还在跑（`pnpm dev`）。注意 Gateway 重启时偶尔会撞 `EADDRINUSE`，
+这时 `tsx watch` 不会自己重试 —— 用 `pnpm dev:all` 可以自动把它拉起来。
+
+### 同 id 的 Runner 被拒绝（1013）
+
+```text
+Aylens Runner disconnected: Gateway closed the connection (1013 runner id already connected: dev-runner)
+```
+
+已经有一个同 id 的 Runner 连着。Gateway **只接受一个**：新连接被拒（1013），不会踢掉旧的，
+所以两个进程不会再互相踢（以前是无限交替 replace）。
+
+处理：停掉多余的那个，或者让它们用不同的 `runner.id`（同时把新 id 加进 Gateway 的 `auth.runnerTokens`）。
+只有当旧连接累计 `runtimeRegistry.heartbeatTimeoutMs` 没有心跳时，新连接才允许接管这个 id。
+
 ### Runtime offline
 
 检查：
@@ -269,9 +328,9 @@ maxConcurrency = 1
 
 建议确认：
 
-1. npm run typecheck 通过；
-2. npm test 通过；
-3. npm run build 通过；
+1. pnpm typecheck 通过；
+2. pnpm test 通过；
+3. pnpm build 通过；
 4. Gateway /health / /ready 正常；
 5. Windows Runner online；
 6. Runtime capability 与实际 Plugin/Profile 一致；
