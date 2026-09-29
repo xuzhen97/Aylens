@@ -82,6 +82,8 @@ release/
 
 Gateway 和 Runner 的 Aylens 业务代码分别合并为单一 Bundle；第三方 Provider 可以分发为单个 `.aylens-provider` 文件。内置 `generic-browser` 仍随 Runner Bundle 提供，同时也会产出独立 Provider 包作为标准分发物。
 
+Release 同时生成 PM2 `ecosystem.config.cjs` 与 `pm2-start.ps1` / `pm2-start.cmd` / `pm2-start.sh`。可以在 `release/` 根目录同机管理 Gateway + Runner，也可以只复制 `gateway/` 或 `runner/` 后独立用 PM2 管理。详细命令见构建后的 `release/README.md`。
+
 启动 Gateway：
 
 ```bash

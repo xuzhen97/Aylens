@@ -72,6 +72,8 @@ pnpm start:runner
 
 复制 `release/gateway` 或 `release/runner` 到另一台已有 Node.js 的机器后，在对应目录执行 `npm install --omit=dev`，再执行 `npm start` 即可。
 
+生产环境也可以使用 PM2。构建后的 `release/`、`release/gateway/`、`release/runner/` 都包含 `ecosystem.config.cjs` 和跨平台 `pm2-start` 脚本。安装 `pm2` 后，Windows PowerShell 执行 `./pm2-start.ps1`，Linux/macOS 执行 `./pm2-start.sh`；脚本会使用 `startOrRestart` 启动/更新进程并执行 `pm2 save`。
+
 ## 最小启动
 
 启动 Gateway：
