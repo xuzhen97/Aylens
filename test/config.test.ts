@@ -40,6 +40,24 @@ describe("config", () => {
     );
   });
 
+  it("applies Gateway section defaults when server and runtimeRegistry are omitted", () => {
+    const parsed = appConfigSchema.parse({
+      version: 1,
+      auth: { apiKey: "a" },
+    });
+
+    expect(parsed.server).toEqual({
+      host: "127.0.0.1",
+      port: 3000,
+      runnerPath: "/v1/runners/connect",
+    });
+    expect(parsed.runtimeRegistry).toEqual({
+      heartbeatTimeoutMs: 30_000,
+      offlineAfterMs: 60_000,
+      jobTimeoutMs: 30_000,
+    });
+  });
+
   it("rejects routes that reference unknown providers", () => {
     const result = appConfigSchema.safeParse({
       version: 1,

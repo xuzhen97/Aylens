@@ -8,17 +8,23 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:gateway": "tsx watch src/index.ts",
     "dev:runner": "tsx watch src/runner/index.ts",
     "dev:all": "tsx scripts/dev-all.ts",
-    "start": "node dist/src/index.js",
-    "start:runner": "node dist/src/runner/index.js",
-    "build": "tsc -p tsconfig.json",
+    "start": "node release/gateway/aylens-gateway.mjs",
+    "start:gateway": "node release/gateway/aylens-gateway.mjs",
+    "start:runner": "node release/runner/aylens-runner.mjs",
+    "build:gateway": "node scripts/build-release.mjs gateway",
+    "build:runner": "node scripts/build-release.mjs runner",
+    "build:providers": "node scripts/build-release.mjs providers",
+    "build": "node scripts/build-release.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "smoke:generic-browser": "tsx scripts/smoke-generic-browser.ts"
   },
   "dependencies": {
     "fastify": "^5.0.0",
+    "fflate": "0.8.2",
     "http-proxy-agent": "^9.1.0",
     "https-proxy-agent": "^9.1.0",
     "playwright-core": "^1.63.0",
@@ -30,6 +36,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/ws": "^8.0.0",
+    "esbuild": "0.28.2",
     "tsx": "^4.0.0",
     "typescript": "^5.9.2",
     "vitest": "^3.0.0"

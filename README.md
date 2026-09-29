@@ -64,6 +64,24 @@ pnpm test
 pnpm build
 ```
 
+`pnpm build` 会生成正式的 Release 产物：
+
+```text
+release/
+├── gateway/
+│   ├── aylens-gateway.mjs
+│   ├── package.json
+│   └── config/aylens.yaml
+├── runner/
+│   ├── aylens-runner.mjs
+│   ├── package.json
+│   └── config/runner.yaml
+└── providers/
+    └── generic-browser.aylens-provider
+```
+
+Gateway 和 Runner 的 Aylens 业务代码分别合并为单一 Bundle；第三方 Provider 可以分发为单个 `.aylens-provider` 文件。内置 `generic-browser` 仍随 Runner Bundle 提供，同时也会产出独立 Provider 包作为标准分发物。
+
 启动 Gateway：
 
 ```bash
@@ -126,6 +144,8 @@ dev-key
 ```text
 src/providers/generic-browser/index.ts
 ```
+
+正式构建后，Runner 入口是 `release/runner/aylens-runner.mjs`；同一 Provider 源码还会生成 `release/providers/generic-browser.aylens-provider`，Gateway Bundle 不包含 Provider 执行逻辑。
 
 默认配置已经挂上它了（`config/aylens.yaml` 的 `providers` + `config/runner.yaml` 的
 `plugins.modules` 与 `generic-login` Profile），所以 `pnpm dev:all` 起来就能用。

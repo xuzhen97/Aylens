@@ -221,7 +221,7 @@ Runner 独占：
 
 > 与“如何访问目标网站”有关的实现和敏感状态，都属于 Runner。
 
-Provider 实现源码与部署选择是两个维度：Aylens 官方实现统一维护在 `src/providers/<implementation>/` 并参与构建，但是否加载某个实现由每台 Runner 自己的 `plugins.modules` 决定。内置实现使用 `builtin:<implementation>` 标识；第三方实现仍可使用 ESM 文件或 npm package。这样不同 Runner 可以运行不同 Provider 实现，而不需要 Gateway 持有实现代码或执行配置。
+Provider 实现源码与部署选择是两个维度：Aylens 官方实现统一维护在 `src/providers/<implementation>/`。正式构建时内置实现进入 Runner Bundle，不进入 Gateway Bundle；需要独立分发时则打成 `.aylens-provider` 单文件包。是否加载某个实现仍由每台 Runner 自己的 `plugins.modules` 决定。第三方实现也可使用 `.aylens-provider`、本地 ESM 或 npm package，并走同一套 Plugin 契约与校验流程。
 
 ---
 

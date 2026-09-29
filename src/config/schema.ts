@@ -67,6 +67,10 @@ export const appConfigSchema = z.object({
     host: z.string().default("127.0.0.1"),
     port: z.number().int().min(1).max(65535).default(3000),
     runnerPath: z.string().startsWith("/").default("/v1/runners/connect"),
+  }).default({
+    host: "127.0.0.1",
+    port: 3000,
+    runnerPath: "/v1/runners/connect",
   }),
   auth: z.object({
     apiKey: z.string().min(1),
@@ -76,6 +80,10 @@ export const appConfigSchema = z.object({
     heartbeatTimeoutMs: z.number().int().positive().default(30_000),
     offlineAfterMs: z.number().int().positive().default(60_000),
     jobTimeoutMs: z.number().int().positive().default(30_000),
+  }).default({
+    heartbeatTimeoutMs: 30_000,
+    offlineAfterMs: 60_000,
+    jobTimeoutMs: 30_000,
   }),
   providers: z.record(z.string(), providerSchema).default({}),
   routes: z.record(z.string(), z.object({

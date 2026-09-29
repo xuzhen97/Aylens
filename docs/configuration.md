@@ -63,6 +63,7 @@ runner:
 plugins:
   modules:
     - "builtin:generic-browser"
+    # 外部扩展推荐：- "./providers/example.aylens-provider"
 
 providers:
   generic-browser:

@@ -2,11 +2,22 @@ import type { ProviderSearchResponse, SearchRequest } from "../contracts/search.
 
 export type RuntimeStatus = "online" | "degraded" | "draining" | "offline";
 
+export interface RuntimeBrowserProfileState {
+  id: string;
+  browser: string;
+  mode: "launch" | "cdp";
+  activeLeases: number;
+  maxConcurrency: number;
+  interactive: boolean;
+  transport: string;
+}
+
 export interface RuntimeCapabilities {
   providerTypes: string[];
   providerIds: string[];
   browsers: string[];
   profiles: string[];
+  profileDetails?: RuntimeBrowserProfileState[];
   http: boolean;
   browserAutomation: boolean;
 }

@@ -11,6 +11,9 @@ importers:
       fastify:
         specifier: ^5.0.0
         version: 5.12.5
+      fflate:
+        specifier: 0.8.2
+        version: 0.8.2
       http-proxy-agent:
         specifier: ^9.1.0
         version: 9.1.0
@@ -39,6 +42,9 @@ importers:
       '@types/ws':
         specifier: ^8.0.0
         version: 8.18.1
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       tsx:
         specifier: ^4.0.0
         version: 4.23.15
@@ -529,6 +535,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fflate@0.8.2:
+    resolution: {integrity: sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==}
 
   find-my-way@9.9.0:
     resolution: {integrity: sha512-sJsgZ1sQH2UDuowPuMKg8az7Qc8F0jnj+SKkFWU/+T0xcFlgV5skgXOGUqmQzOdmW6ALA7AhJINWx3qFBkbLHA==}
@@ -1231,6 +1240,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
+
+  fflate@0.8.2: {}
 
   find-my-way@9.9.0:
     dependencies:

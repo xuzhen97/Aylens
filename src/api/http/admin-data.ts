@@ -73,16 +73,42 @@ function toSafeAudit(record: AuditRecord) {
 export function buildAdminOverview(context: GatewayContext) {
   const runtimes = context.runtimes.list();
 
-  // Profile 由已连接的 Runner 上报；Gateway 自身不持有 Profile，也不会启动或操作浏览器。
-  const browserProfiles = runtimes.flatMap((runtime) =>
-    runtime.capabilities.profiles.map((profileId) => ({
-      id: profileId,
-      scope: "runner" as const,
-      runtimeId: runtime.id,
-      browser: runtime.capabilities.browsers.length === 1
-        ? runtime.capabilities.browsers[0]
-        : undefined,
-    })));
+  // Profile 由 Runner 上报安全的运行状态；Gateway 不接收本地路径、登录态、Cookie 或代理凭据。
+  const browserProfiles = runtimes.flatMap((runtime) => {
+    const details = new Map(
+      (runtime.capabilities.profileDetails ?? []).map((profile) => [profile.id, profile]),
+    );
+    const profileIds = new Set([
+      ...runtime.capabilities.profiles,
+      ...details.keys(),
+    ]);
+
+    return [...profileIds].map((profileId) => {
+      const detail = details.get(profileId);
+      const status = runtime.status === "offline"
+        ? "offline"
+        : runtime.status === "draining"
+          ? "draining"
+          : detail
+            ? detail.activeLeases >= detail.maxConcurrency ? "busy" : "available"
+            : "unknown";
+
+      return {
+        id: profileId,
+        scope: "runner" as const,
+        runtimeId: runtime.id,
+        status,
+        browser: detail?.browser ?? (runtime.capabilities.browsers.length === 1
+          ? runtime.capabilities.browsers[0]
+          : undefined),
+        mode: detail?.mode,
+        activeLeases: detail?.activeLeases,
+        maxConcurrency: detail?.maxConcurrency,
+        interactive: detail?.interactive,
+        transport: detail?.transport,
+      };
+    });
+  });
 
   const providers = context.providers.list().map(({ id, config }) => ({
     id,

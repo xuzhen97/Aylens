@@ -150,6 +150,24 @@ describe("Gateway/Runner integration", () => {
     expect(registered?.status).toBe("online");
     expect(registered?.capabilities.profiles).toContain("xhs-main");
     expect(registered?.capabilities.browsers).toContain("chrome");
+    expect(registered?.capabilities.profileDetails).toEqual([
+      {
+        id: "xhs-main",
+        browser: "chrome",
+        mode: "launch",
+        activeLeases: 0,
+        maxConcurrency: 1,
+        interactive: true,
+        transport: "direct",
+      },
+    ]);
+    expect(JSON.stringify(registered?.capabilities)).not.toContain("D:/profiles/xhs-main");
+
+    // Heartbeat 应持续刷新动态 Lease，而不只是注册时上报一次静态 Profile 信息。
+    const lease = runtime.profiles.acquire("xhs-main", "profile-status-test");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(context.runtimes.get("windows-test")?.capabilities.profileDetails?.[0]?.activeLeases).toBe(1);
+    runtime.profiles.release(lease.id);
   });
 
   it("executes a configured provider through a dynamically loaded Runner plugin", async () => {

@@ -216,6 +216,58 @@ describe("admin UI", () => {
     });
   });
 
+  it("shows safe Runner Browser Profile runtime state", async () => {
+    const { app, context } = createAdminServer();
+    context.runtimes.upsert({
+      id: "profile-runner",
+      hostname: "profile-host",
+      os: "windows",
+      version: "0.1.0",
+      protocolVersion: "1",
+      status: "online",
+      labels: {},
+      capabilities: {
+        providerTypes: ["generic-browser"],
+        providerIds: ["browserRead"],
+        browsers: ["chrome"],
+        profiles: ["generic-login"],
+        profileDetails: [{
+          id: "generic-login",
+          browser: "chrome",
+          mode: "launch",
+          activeLeases: 1,
+          maxConcurrency: 1,
+          interactive: false,
+          transport: "direct",
+        }],
+        http: true,
+        browserAutomation: true,
+      },
+      capacity: { maxJobs: 1, activeJobs: 0 },
+      lastSeenAt: Date.now(),
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/admin/overview",
+      headers: { authorization: "Bearer admin-api-key-do-not-expose" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().browserProfiles).toEqual([{
+      id: "generic-login",
+      scope: "runner",
+      runtimeId: "profile-runner",
+      status: "busy",
+      browser: "chrome",
+      mode: "launch",
+      activeLeases: 1,
+      maxConcurrency: 1,
+      interactive: false,
+      transport: "direct",
+    }]);
+  });
+
   it("redacts sensitive configuration and audit URL parameters", async () => {
     const { app } = createAdminServer();
 

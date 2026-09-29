@@ -163,7 +163,8 @@ runner:
 plugins:
   baseDir: "."
   modules:
-    - "builtin:generic-browser"\n    # 也可以加载外部 ESM 路径或 npm package
+    - "builtin:generic-browser"
+    # 也可以加载 ./providers/example.aylens-provider、外部 ESM 路径或 npm package
 
 browserProfiles:
   account-main:
@@ -179,3 +180,5 @@ browserProfiles:
 ```
 
 Runner capability 来自实际加载成功的 Plugin、Provider Deployment 与 Browser Profile，不需要在 YAML 中重复声明。
+
+Runner 会随注册和心跳上报 Browser Profile 的安全运行状态（browser、mode、Lease、maxConcurrency、interactive、transport），供 Gateway Admin UI 展示；`userDataDir`、CDP endpoint、Chrome 可执行路径、Cookie、Local Storage 与凭据不会上报。

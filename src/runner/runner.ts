@@ -376,14 +376,26 @@ export class AylensRunner {
   }
 
   private capabilities() {
+    const profiles = this.runtime.profiles.list();
+
     return {
       providerTypes: this.runtime.pluginTypes,
       providerIds: Object.keys(this.runtime.deployments),
-      browsers: [...new Set(this.runtime.profiles.list().map((profile) => profile.browser))],
-      profiles: this.runtime.profiles.list().map((profile) => profile.id),
+      browsers: [...new Set(profiles.map((profile) => profile.browser))],
+      profiles: profiles.map((profile) => profile.id),
+      // 只上报可观测字段；userDataDir、CDP endpoint、可执行路径、Cookie/凭据等始终留在 Runner 本机。
+      profileDetails: profiles.map((profile) => ({
+        id: profile.id,
+        browser: profile.browser,
+        mode: profile.mode,
+        activeLeases: profile.activeLeases,
+        maxConcurrency: profile.maxConcurrency,
+        interactive: profile.interactive,
+        transport: profile.transport ?? "direct",
+      })),
       // Transport 与 Browser capability 来自 Runner 实际构建成功的本地资源，避免配置声明与真实能力漂移。
       http: true,
-      browserAutomation: this.runtime.profiles.list().length > 0,
+      browserAutomation: profiles.length > 0,
     };
   }
 }

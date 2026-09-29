@@ -47,6 +47,31 @@ pnpm test
 pnpm build
 ```
 
+构建产物会变成可直接部署的 Release：
+
+```text
+release/
+├── gateway/
+│   ├── aylens-gateway.mjs
+│   ├── package.json
+│   └── config/aylens.yaml
+├── runner/
+│   ├── aylens-runner.mjs
+│   ├── package.json
+│   └── config/runner.yaml
+└── providers/
+    └── generic-browser.aylens-provider
+```
+
+在源码仓库里可直接运行：
+
+```bash
+pnpm start:gateway
+pnpm start:runner
+```
+
+复制 `release/gateway` 或 `release/runner` 到另一台已有 Node.js 的机器后，在对应目录执行 `npm install --omit=dev`，再执行 `npm start` 即可。
+
 ## 最小启动
 
 启动 Gateway：
@@ -100,7 +125,8 @@ dev-key
 这个 Provider 已在默认配置里接好：
 
 ```text
-src/providers/generic-browser/index.ts             官方 Provider 源码（构建后由 builtin:generic-browser 加载）
+src/providers/generic-browser/index.ts                 官方 Provider 源码
+release/providers/generic-browser.aylens-provider    独立 Provider 分发包
 config/aylens.yaml                                  providers.generic-browser + routes.default
 config/runner.yaml                                  plugins.modules + generic-login Profile
 ```

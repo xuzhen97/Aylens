@@ -2,11 +2,23 @@ import { z } from "zod";
 
 export const RUNNER_PROTOCOL_VERSION = "1";
 
+const browserProfileStateSchema = z.object({
+  id: z.string(),
+  browser: z.string(),
+  mode: z.enum(["launch", "cdp"]),
+  activeLeases: z.number().int().nonnegative(),
+  maxConcurrency: z.number().int().positive(),
+  interactive: z.boolean(),
+  transport: z.string().min(1),
+});
+
 const capabilitiesSchema = z.object({
   providerTypes: z.array(z.string()),
   providerIds: z.array(z.string()),
   browsers: z.array(z.string()),
   profiles: z.array(z.string()),
+  // 兼容旧 Runner：调度仍使用 profiles；详细状态是增量可观测字段。
+  profileDetails: z.array(browserProfileStateSchema).default([]),
   http: z.boolean(),
   browserAutomation: z.boolean(),
 });

@@ -1,5 +1,9 @@
-import { isAbsolute, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { strFromU8, unzipSync } from "fflate";
 import type { ProviderFactory } from "./types.js";
 import genericBrowserPlugin from "./generic-browser/index.js";
 
@@ -14,13 +18,26 @@ export interface ProviderPluginLoadResult {
   factories: ProviderFactory[];
 }
 
+interface ProviderPackageManifest {
+  formatVersion: 1;
+  name: string;
+  version: string;
+  apiVersion: string;
+  entry: string;
+  providerTypes: string[];
+}
+
 const BUILTIN_PLUGINS = new Map<string, ProviderPlugin>([
   ["builtin:generic-browser", genericBrowserPlugin],
 ]);
 
+function resolveFileReference(moduleRef: string, baseDir: string): string {
+  return isAbsolute(moduleRef) ? moduleRef : resolve(baseDir, moduleRef);
+}
+
 function moduleSpecifier(moduleRef: string, baseDir: string): string {
   if (moduleRef.startsWith(".") || isAbsolute(moduleRef)) {
-    return pathToFileURL(isAbsolute(moduleRef) ? moduleRef : resolve(baseDir, moduleRef)).href;
+    return pathToFileURL(resolveFileReference(moduleRef, baseDir)).href;
   }
   return moduleRef;
 }
@@ -44,6 +61,74 @@ function validatePlugin(value: unknown, moduleRef: string): ProviderPlugin {
   return candidate as ProviderPlugin;
 }
 
+function validatePackageManifest(value: unknown, moduleRef: string): ProviderPackageManifest {
+  if (!value || typeof value !== "object") {
+    throw new Error(`Invalid Provider package manifest: ${moduleRef}`);
+  }
+
+  const manifest = value as Partial<ProviderPackageManifest>;
+  if (
+    manifest.formatVersion !== 1 ||
+    typeof manifest.name !== "string" ||
+    typeof manifest.version !== "string" ||
+    typeof manifest.apiVersion !== "string" ||
+    typeof manifest.entry !== "string" ||
+    !Array.isArray(manifest.providerTypes) ||
+    manifest.providerTypes.some((type) => typeof type !== "string")
+  ) {
+    throw new Error(`Invalid Provider package manifest: ${moduleRef}`);
+  }
+
+  if (manifest.entry !== basename(manifest.entry) || !manifest.entry.endsWith(".mjs")) {
+    throw new Error(`Provider package entry must be a top-level .mjs file: ${moduleRef}`);
+  }
+
+  return manifest as ProviderPackageManifest;
+}
+
+async function loadProviderPackage(moduleRef: string, baseDir: string): Promise<ProviderPlugin> {
+  const archivePath = resolveFileReference(moduleRef, baseDir);
+  const archive = await readFile(archivePath);
+  const files = unzipSync(archive);
+  const manifestBytes = files["provider.json"];
+  if (!manifestBytes) {
+    throw new Error(`Provider package is missing provider.json: ${moduleRef}`);
+  }
+
+  let manifestValue: unknown;
+  try {
+    manifestValue = JSON.parse(strFromU8(manifestBytes));
+  } catch (error) {
+    throw new Error(`Provider package has invalid provider.json: ${moduleRef}`, { cause: error });
+  }
+  const manifest = validatePackageManifest(manifestValue, moduleRef);
+  const entryBytes = files[manifest.entry];
+  if (!entryBytes) {
+    throw new Error(`Provider package is missing entry ${manifest.entry}: ${moduleRef}`);
+  }
+
+  const digest = createHash("sha256").update(archive).digest("hex");
+  const aylensHome = resolve(process.env.AYLENS_HOME ?? join(homedir(), ".aylens"));
+  const cacheDir = join(aylensHome, "provider-cache", digest);
+  const entryPath = join(cacheDir, manifest.entry);
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(entryPath, entryBytes);
+
+  const imported = await import(`${pathToFileURL(entryPath).href}?sha256=${digest}`);
+  const plugin = validatePlugin(imported.default ?? imported.providerPlugin, moduleRef);
+
+  if (plugin.name !== manifest.name || plugin.version !== manifest.version) {
+    throw new Error(`Provider package manifest does not match exported plugin metadata: ${moduleRef}`);
+  }
+
+  const exportedTypes = new Set(plugin.factories.map((factory) => factory.type));
+  if (manifest.providerTypes.some((type) => !exportedTypes.has(type)) || exportedTypes.size !== manifest.providerTypes.length) {
+    throw new Error(`Provider package providerTypes do not match exported factories: ${moduleRef}`);
+  }
+
+  return plugin;
+}
+
 export async function loadProviderPlugins(
   modules: string[],
   baseDir = process.cwd(),
@@ -53,9 +138,16 @@ export async function loadProviderPlugins(
 
   for (const moduleRef of modules) {
     const builtin = BUILTIN_PLUGINS.get(moduleRef);
-    const imported = builtin ? undefined : await import(moduleSpecifier(moduleRef, baseDir));
-    const exported = builtin ?? imported?.default ?? imported?.providerPlugin;
-    const plugin = validatePlugin(exported, moduleRef);
+    let plugin: ProviderPlugin;
+
+    if (builtin) {
+      plugin = validatePlugin(builtin, moduleRef);
+    } else if (moduleRef.endsWith(".aylens-provider")) {
+      plugin = await loadProviderPackage(moduleRef, baseDir);
+    } else {
+      const imported = await import(moduleSpecifier(moduleRef, baseDir));
+      plugin = validatePlugin(imported.default ?? imported.providerPlugin, moduleRef);
+    }
 
     plugins.push(plugin);
     factories.push(...plugin.factories);
