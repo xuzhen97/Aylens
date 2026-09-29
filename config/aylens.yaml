@@ -1,32 +1,13 @@
 version: 1
 
-server:
-  host: 127.0.0.1
-  port: 3000
-  runnerPath: /v1/runners/connect
-
 auth:
   apiKey: "${AYLENS_API_KEY:-dev-key}"
   runnerTokens:
     dev-runner: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
 
-runtimeRegistry:
-  heartbeatTimeoutMs: 30000
-  offlineAfterMs: 60000
-  jobTimeoutMs: 60000
-
 providers:
   generic-browser:
     type: generic-browser
-    enabled: true
-
-    # 由 Runner 侧的 browserAutomation 能力承接，不带 os/labels 约束，
-    # 只要有一个在线 Runner 加载了 generic-browser 插件即可匹配。
-    runtime:
-      selector:
-        providerType: generic-browser
-        browser: chrome
-        profile: generic-login
 
 routes:
   default:

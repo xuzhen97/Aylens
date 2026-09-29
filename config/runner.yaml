@@ -2,64 +2,18 @@ runner:
   id: dev-runner
   gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect"
   token: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
-  heartbeatMs: 10000
-  maxJobs: 1
-  labels:
-    environment: development
 
 plugins:
-  baseDir: "."
   modules:
     - "builtin:generic-browser"
-
-capabilities:
-  browsers:
-    - chrome
-  http: true
-  browserAutomation: true
 
 providers:
   generic-browser:
     type: generic-browser
     browser:
       profile: generic-login
-    options:
-      waitUntil: domcontentloaded
-      timeoutMs: 30000
-      extractionTimeoutMs: 10000
-      postLoadDelayMs: 0
-      maxTextChars: 50000
-      snippetChars: 500
-      textSelector: body
-      keepPageOpen: false
-
-transports:
-  direct:
-    type: direct
-
-  # Example only:
-  # proxy-us:
-  #   type: http-proxy
-  #   url: "${PROXY_US_URL}"
-  #
-  # proxy-cn:
-  #   type: socks5
-  #   url: "${PROXY_CN_URL}"
 
 browserProfiles:
   generic-login:
-    browser: chrome
-    mode: launch
-    persistent: true
-
-    # 相对仓库根目录；pnpm dev:runner 的 cwd 即仓库根。
     userDataDir: "./.profiles/generic-login"
-
-    maxConcurrency: 1
-
-    # 需要人工登录目标站点时，改成 headless: false + interactive: true。
-    interactive: false
     headless: true
-
-    channel: chrome
-    args: []

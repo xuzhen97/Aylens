@@ -73,11 +73,6 @@ describe("generic-browser Gateway/Runner flow", () => {
         labels: { role: "browser" },
       },
       plugins: { baseDir: ".", modules: [] },
-      capabilities: {
-        browsers: ["chrome"],
-        http: true,
-        browserAutomation: true,
-      },
       providers: {
         browserRead: {
           type: "generic-browser",

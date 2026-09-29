@@ -165,16 +165,6 @@ plugins:
   modules:
     - "builtin:generic-browser"\n    # 也可以加载外部 ESM 路径或 npm package
 
-capabilities:
-  browsers:
-    - chrome
-  http: true
-  browserAutomation: true
-
-transports:
-  direct:
-    type: direct
-
 browserProfiles:
   account-main:
     browser: chrome
@@ -188,4 +178,4 @@ browserProfiles:
     args: []
 ```
 
-Provider type capability 来自实际加载成功的 Plugin，而不是 Runner YAML 中随意填写。
+Runner capability 来自实际加载成功的 Plugin、Provider Deployment 与 Browser Profile，不需要在 YAML 中重复声明。

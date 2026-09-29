@@ -379,17 +379,11 @@ export class AylensRunner {
     return {
       providerTypes: this.runtime.pluginTypes,
       providerIds: Object.keys(this.runtime.deployments),
-      browsers: [
-        ...new Set([
-          ...this.config.capabilities.browsers,
-          ...this.runtime.profiles.list().map((profile) => profile.browser),
-        ]),
-      ],
+      browsers: [...new Set(this.runtime.profiles.list().map((profile) => profile.browser))],
       profiles: this.runtime.profiles.list().map((profile) => profile.id),
-      http: this.config.capabilities.http,
-      browserAutomation:
-        this.config.capabilities.browserAutomation ||
-        this.runtime.profiles.list().length > 0,
+      // Transport 与 Browser capability 来自 Runner 实际构建成功的本地资源，避免配置声明与真实能力漂移。
+      http: true,
+      browserAutomation: this.runtime.profiles.list().length > 0,
     };
   }
 }

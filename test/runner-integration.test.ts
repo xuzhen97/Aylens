@@ -124,11 +124,6 @@ describe("Gateway/Runner integration", () => {
         labels: { role: "browser" },
       },
       plugins: { baseDir: ".", modules: [] },
-      capabilities: {
-        browsers: ["chrome"],
-        http: true,
-        browserAutomation: true,
-      },
       transports: {
         direct: { type: "direct" },
       },
@@ -199,11 +194,6 @@ describe("Gateway/Runner integration", () => {
       plugins: {
         baseDir: process.cwd(),
         modules: ["./test/fixtures/fake-provider-plugin.mjs"],
-      },
-      capabilities: {
-        browsers: [],
-        http: true,
-        browserAutomation: false,
       },
       providers: {
         remoteFixture: {

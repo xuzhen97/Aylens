@@ -53,7 +53,7 @@ export class ExecutionDispatcher {
 
     const target = definition.config.runtime;
 
-    if ("nodeId" in target) {
+    if (target && "nodeId" in target) {
       const runtime = this.runtimes.get(target.nodeId);
       if (!runtime || runtime.status === "offline") {
         throw new RetrievalError("RUNTIME_OFFLINE", `Runtime is offline: ${target.nodeId}`, { retryable: true });
@@ -66,7 +66,9 @@ export class ExecutionDispatcher {
       return this.executeWithRuntime(runtime.id, () => this.runnerSessions.execute(runtime.id, execution));
     }
 
-    const runtime = this.runtimes.select(target.selector, providerId);
+    // 未配置 placement 时只按逻辑 Provider ID 与 Type 选择已实际部署该 Provider 的 Runner。
+    const selector = target?.selector ?? { providerType: definition.config.type };
+    const runtime = this.runtimes.select(selector, providerId);
     return this.executeWithRuntime(runtime.id, () => this.runnerSessions.execute(runtime.id, execution));
   }
 }

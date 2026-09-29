@@ -31,7 +31,6 @@ function runnerConfig(gatewayUrl: string) {
       labels: { purpose: "reconnect-test" },
     },
     plugins: { baseDir: process.cwd(), modules: [] },
-    capabilities: { browsers: [], http: true, browserAutomation: false },
     transports: { direct: { type: "direct" } },
     browserProfiles: {},
   });

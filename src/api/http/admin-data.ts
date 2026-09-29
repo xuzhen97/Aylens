@@ -16,6 +16,7 @@ function redactLabels(labels: Record<string, string>): Record<string, string> {
 function toSafeRuntimeTarget(
   runtime: ReturnType<GatewayContext["providers"]["getDefinition"]>["config"]["runtime"],
 ) {
+  if (!runtime) return { automatic: true };
   if ("selector" in runtime && runtime.selector.labels) {
     return {
       selector: {

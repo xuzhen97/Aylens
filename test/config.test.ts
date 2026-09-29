@@ -53,7 +53,7 @@ describe("config", () => {
     expect(result.success).toBe(false);
   });
 
-  it("requires every provider to declare an explicit Runner target", () => {
+  it("allows provider placement to be omitted while rejecting legacy local mode", () => {
     const baseConfig = {
       version: 1,
       server: { host: "127.0.0.1", port: 3000, runnerPath: "/runner" },
@@ -75,7 +75,7 @@ describe("config", () => {
       providers: { p: { type: "t", runtime: { nodeId: "runner-1" } } },
     });
 
-    expect(missing.success).toBe(false);
+    expect(missing.success).toBe(true);
     expect(legacyLocalMode.success).toBe(false);
     expect(runner.success).toBe(true);
   });

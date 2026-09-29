@@ -18,11 +18,6 @@ export const runnerConfigSchema = z.object({
     baseDir: z.string().min(1).default("."),
     modules: z.array(z.string().min(1)).default([]),
   }).default({ baseDir: ".", modules: [] }),
-  capabilities: z.object({
-    browsers: z.array(z.string()).default([]),
-    http: z.boolean().default(true),
-    browserAutomation: z.boolean().default(false),
-  }),
   providers: z.record(z.string(), providerDeploymentSchema).default({}),
   transports: z.record(z.string(), transportSchema).default({
     direct: { type: "direct" },

@@ -29,68 +29,58 @@ ${VAR}
 ${VAR:-fallback}
 ```
 
-## Gateway 基本结构
+## Gateway 最小结构
 
 ```yaml
 version: 1
-
-server:
-  host: 127.0.0.1
-  port: 3000
-  runnerPath: /v1/runners/connect
 
 auth:
   apiKey: "${AYLENS_API_KEY:-dev-key}"
   runnerTokens:
     dev-runner: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
 
-runtimeRegistry:
-  heartbeatTimeoutMs: 30000
-  offlineAfterMs: 60000
-  jobTimeoutMs: 30000
-
-providers: {}
+providers:
+  generic-browser:
+    type: generic-browser
 
 routes:
   default:
-    providers: []
+    providers:
+      - generic-browser
 ```
 
-Gateway 侧不再有 `transports` 与 `browserProfiles` 段：Gateway 不做抓取，因此不持有 Transport 或 Browser Profile。
-Provider 的 `transport`、`browser` 与 `options` 只存在于 Runner Provider Deployment，不由 Gateway 保存或随任务下发。
+Gateway 侧不再有 `transports` 与 `browserProfiles` 段：Gateway 不做抓取，因此不持有 Transport 或 Browser Profile。Provider 的 `transport`、`browser` 与 `options` 只存在于 Runner Provider Deployment。
 
-## Runner 基本结构
+`server` 与 `runtimeRegistry` 都有默认值。Provider 的 `runtime` placement 也可以省略；此时 Gateway 会按 Provider ID 与 Type，从实际部署该 Provider 的在线 Runner 中选择。
+
+## Runner 最小结构
 
 ```yaml
 runner:
   id: dev-runner
   gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect"
   token: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
-  heartbeatMs: 10000
-  maxJobs: 1
-
 plugins:
-  baseDir: "."
   modules:
     - "builtin:generic-browser"
 
-capabilities:
-  browsers: []
-  http: true
-  browserAutomation: false
+providers:
+  generic-browser:
+    type: generic-browser
+    browser:
+      profile: generic-login
 
-transports:
-  direct:
-    type: direct
-
-browserProfiles: {}
+browserProfiles:
+  generic-login:
+    userDataDir: "./.profiles/generic-login"
+    headless: true
 ```
 
-Provider capability 不应手工伪造。Runner 会根据实际成功加载的 Provider Plugin 上报 providerTypes，并根据本机 Provider Deployment 上报 providerIds。
+Runner 不再要求手工填写 `capabilities`。Provider Type 来自实际加载成功的 Plugin，Provider ID 来自本机 Deployment，Browser/Profile 能力来自实际 Browser Profile。Direct Transport、Plugin `baseDir`、心跳和并发数都有默认值。
 
 ## Runtime 选择
 
-Provider 定义与执行机器是两个概念。
+Provider 定义与执行机器是两个概念。默认情况下无需配置 `runtime`，Gateway 会自动要求目标 Runner 实际部署同一个 Provider ID，并匹配 Provider Type。只有需要固定机器或增加 placement 约束时，才配置 `runtime.nodeId` 或 `runtime.selector`。
 
 示例：
 
