@@ -90,8 +90,7 @@ describe("RunnerSessionManager", () => {
       timestamp: Date.now(),
     });
 
-    // Had either announcement settled the job, this would already be rejected
-    // and `handle` would have dropped the result instead of resolving it.
+    // JOB_ACCEPTED/JOB_STARTED 只更新阶段，不能结束任务；否则真正结果到达时会被当作无效消息丢弃。
     await expect(execution).resolves.toMatchObject({ runtimeId: "runner-1" });
   });
 
@@ -113,8 +112,7 @@ describe("RunnerSessionManager", () => {
       .map((raw) => JSON.parse(raw) as { type: string; executionId?: string })
       .find((message) => message.type === "CANCEL");
 
-    // Nothing used to send CANCEL, so a timed-out job kept running on the Runner
-    // and held its browser profile lease.
+    // Gateway 超时后必须发送 CANCEL，否则 Runner 会继续执行并占用 Browser Profile Lease。
     expect(cancel).toMatchObject({ executionId: "exec-started" });
   });
 

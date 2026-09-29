@@ -72,8 +72,7 @@ function toSafeAudit(record: AuditRecord) {
 export function buildAdminOverview(context: GatewayContext) {
   const runtimes = context.runtimes.list();
 
-  // Profiles are advertised by connected Runners. The Gateway holds no profiles
-  // of its own: it never launches or touches a browser.
+  // Profile 由已连接的 Runner 上报；Gateway 自身不持有 Profile，也不会启动或操作浏览器。
   const browserProfiles = runtimes.flatMap((runtime) =>
     runtime.capabilities.profiles.map((profileId) => ({
       id: profileId,

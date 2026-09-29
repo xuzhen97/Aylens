@@ -32,7 +32,7 @@ const providerRuntimeSchema = z.union([
 export const providerSchema = z.object({
   type: z.string().min(1),
   enabled: z.boolean().default(true),
-  // Gateway-owned logical definition: only placement belongs here.
+  // Gateway 只持有 Provider 的逻辑定义；这里只描述运行位置，不包含任何执行配置。
   runtime: providerRuntimeSchema,
 });
 

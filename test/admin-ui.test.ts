@@ -162,10 +162,7 @@ describe("admin UI", () => {
 
   it("keeps the request tester provider selection across auto-refreshes", () => {
     const tester = renderAdminPage("tester");
-    // Regression: sourceSelect() previously rebuilt options on every render(),
-    // wiping the user's choice when auto-refresh fired every 5s. The fix caches
-    // the rendered provider keys on the <select> element and restores the prior
-    // value when the options list is unchanged.
+    // 回归测试：自动刷新不能重建 Provider 选项并清空用户选择；选项不变时必须恢复原值。
     expect(tester).toMatch(/s\.dataset\.keys/);
     expect(tester).toMatch(/Array\.from\(s\.options\)\.some/);
   });
@@ -204,7 +201,7 @@ describe("admin UI", () => {
       summary: {
         providers: 1,
         enabledProviders: 1,
-        // No Runner is connected in this fixture, so no node is reported.
+        // 此测试夹具没有连接 Runner，因此节点列表应为空。
         runtimes: 0,
         onlineRuntimes: 0,
         browserProfiles: 0,

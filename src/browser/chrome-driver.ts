@@ -50,7 +50,7 @@ export class PlaywrightChromeDriver implements BrowserDriver {
 
       return {
         context,
-        // The external CDP browser is not owned by Aylens. Do not terminate it here.
+        // 外部 CDP 浏览器不归 Aylens 管理，因此这里只断开连接，不能终止浏览器进程。
         close: async () => undefined,
       };
     }

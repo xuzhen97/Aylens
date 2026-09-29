@@ -8,12 +8,9 @@ import { ProviderRouter } from "../search/router.js";
 import { SearchService } from "../search/search-service.js";
 
 /**
- * Gateway context: control plane only.
+ * Gateway 上下文：仅负责控制面。
  *
- * It holds provider definitions and scheduling requirements, the Runner
- * registry, Runner sessions, and audit. It deliberately holds no transports,
- * browser host, or browser profiles — those belong to Runner (see
- * docs/adr/2026-09-28-gateway-control-plane-only.md).
+ * 这里保存 Provider 逻辑定义与调度要求、Runner 注册表、Runner 会话和审计信息。  * 它刻意不持有 Transport、BrowserHost 或 Browser Profile；这些执行资源只属于 Runner。  * 详细边界见 docs/adr/2026-09-28-gateway-control-plane-only.md。
  */
 export interface GatewayContext {
   config: AppConfig;

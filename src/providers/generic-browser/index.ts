@@ -124,9 +124,7 @@ export const genericBrowserFactory: ProviderFactory = {
         }
 
         const requestedUrl = parseTargetUrl(request.query);
-        // Set when the Gateway gives up on this job, or the Runner is shutting
-        // down. Without it a cancelled job kept a browser profile leased until
-        // its own navigation timeout expired.
+        // Gateway 放弃任务或 Runner 关闭时会触发该信号；必须传递取消状态，避免任务继续占用 Browser Profile。
         const { signal } = context;
 
         return browser.withProfile(

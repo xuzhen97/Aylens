@@ -14,10 +14,7 @@ const base = {
 };
 
 /**
- * Stands in for a connected Runner: registers a schedulable runtime and a
- * socket stub that answers each EXECUTE by feeding a message back into the
- * session manager. This exercises the Gateway's control-plane path end to end
- * without a Gateway-local Provider — the Gateway can no longer execute one.
+ * 模拟一个已连接的 Runner：注册可调度 Runtime，并用 Socket 桩响应 EXECUTE。 * 这样可以端到端验证 Gateway 控制面，而不引入任何 Gateway 本地 Provider 执行。
  */
 function attachFakeRunner(
   context: ReturnType<typeof createGatewayContext>,

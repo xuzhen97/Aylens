@@ -83,8 +83,7 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
     })),
   }));
 
-  // Node listing: only real, connected Runners appear here. The Gateway is not
-  // a schedulable node and never registers itself.
+  // 节点列表只展示真实且已连接的 Runner；Gateway 不是可调度节点，也不会把自己注册成 Runtime。
   app.get("/v1/runtimes", async () => ({
     runtimes: context.runtimes.list(),
   }));

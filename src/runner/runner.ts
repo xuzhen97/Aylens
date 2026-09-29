@@ -26,15 +26,15 @@ function asError(value: unknown): Error {
 export interface RunnerLifecycle {
   connected?(runnerId: string): void;
   disconnected?(reason: string): void;
-  /** A connection attempt failed before registering; a retry is scheduled. */
+  /** 连接在完成注册前失败，Runner 将按退避策略重试。 */
   connectionFailed?(error: Error, attempt: number, retryInMs: number): void;
-  /** An established connection was lost; a retry is scheduled. */
+  /** 已建立的连接断开，Runner 将按退避策略重试。 */
   reconnecting?(attempt: number, retryInMs: number): void;
 }
 
 export interface RunnerOptions {
   lifecycle?: RunnerLifecycle;
-  /** Reconnect backoff bounds. Defaults to a 1s base with a 30s cap. */
+  /** 重连退避范围：默认从 1 秒开始，最大 30 秒。 */
   reconnect?: { baseDelayMs?: number; maxDelayMs?: number };
 }
 
@@ -48,7 +48,7 @@ export class AylensRunner {
   private disconnect: Promise<string> = Promise.resolve("not connected");
   private resolveDisconnect: (reason: string) => void = () => {};
 
-  /** executionId -> controller, so a Gateway CANCEL can stop the real work. */
+  /** executionId 到控制器的映射，使 Gateway 的 CANCEL 能真正停止正在执行的任务。 */
   private readonly inFlight = new Map<string, AbortController>();
 
   constructor(
@@ -57,15 +57,7 @@ export class AylensRunner {
     private readonly options: RunnerOptions = {},
   ) {}
 
-  /**
-   * A single connection attempt. Resolves once the Gateway answers REGISTER with
-   * REGISTERED.
-   *
-   * Rejects on any failure before that, *including a clean close*: the Gateway
-   * refuses an unauthorized or protocol-mismatched Runner by closing the socket
-   * with a code and never emits `error`, so waiting for `error` alone left this
-   * promise pending forever — a wrong token looked like a silent hang.
-   */
+  /**  * 执行一次连接尝试；Gateway 对 REGISTER 返回 REGISTERED 后才算成功。  * 注册完成前的任何失败都必须拒绝，包括 WebSocket 正常关闭；否则错误 Token 可能表现成永久挂起。  */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.disconnect = new Promise<string>((settle) => {
@@ -125,8 +117,7 @@ export class AylensRunner {
 
       socket.on("close", (code, reason) => {
         this.stopHeartbeat();
-        // In-flight results can no longer be delivered, and their provider work
-        // would otherwise keep a browser profile leased for nobody.
+        // 连接断开后结果已无法送达，必须取消进行中的 Provider 工作，避免继续占用 Browser Profile。
         this.abortInFlight("Runner lost its Gateway connection");
 
         const text = `Gateway closed the connection (${code}${
@@ -139,13 +130,7 @@ export class AylensRunner {
     });
   }
 
-  /**
-   * Connects and keeps reconnecting until `close()`.
-   *
-   * `ws` never retries on its own and the Gateway only notices a dead Runner
-   * through a heartbeat timeout, so without this loop every Gateway restart left
-   * the Runner silently alive but unreachable.
-   */
+  /**  * 建立连接，并在 close() 前持续负责重连。  * ws 本身不会自动重连，因此这里必须维护重连循环，避免 Gateway 重启后 Runner 存活但不可达。  */
   async serve(): Promise<void> {
     while (!this.closing) {
       try {
@@ -187,7 +172,7 @@ export class AylensRunner {
     const base = this.options.reconnect?.baseDelayMs ?? DEFAULT_RECONNECT_BASE_MS;
     const max = this.options.reconnect?.maxDelayMs ?? DEFAULT_RECONNECT_MAX_MS;
     const ceiling = Math.min(max, base * 2 ** (attempt - 1));
-    // Half fixed, half random: keeps a fleet of Runners from returning in lockstep.
+    // 固定退避与随机抖动各占一半，避免大量 Runner 同时重连形成惊群。
     return Math.round(ceiling / 2 + Math.random() * (ceiling / 2));
   }
 
@@ -302,9 +287,7 @@ export class AylensRunner {
         request,
       );
 
-      // HEARTBEAT is intentionally sent first. WebSocket message ordering
-      // guarantees the Gateway observes the released capacity before JOB_RESULT
-      // resolves the caller and allows an immediate follow-up dispatch.
+      // 故意先发送 HEARTBEAT，使 Gateway 在 JOB_RESULT 触发后续调度前先看到已释放的执行容量。
       releaseCapacity();
 
       socket.send(JSON.stringify({
@@ -323,8 +306,7 @@ export class AylensRunner {
         message,
         controller.signal.aborted
           ? {
-              // The Gateway has already dropped this job, so it ignores the
-              // reply; TIMEOUT is simply the closest code in the shared enum.
+              // Gateway 已放弃该任务并会忽略结果；共享错误枚举中 TIMEOUT 最接近这里的取消语义。
               code: "TIMEOUT",
               message: "Job was cancelled before it completed",
               retryable: true,

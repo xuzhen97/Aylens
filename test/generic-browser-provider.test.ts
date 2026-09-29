@@ -160,7 +160,7 @@ describe("generic-browser provider", () => {
 
     const close = vi.fn(async () => undefined);
     const goto = vi.fn(async () => {
-      // Mimics Playwright rejecting once the signal fires.
+      // 模拟 Playwright 在取消信号触发后拒绝当前操作。
       throw new Error("navigation aborted");
     });
 
@@ -205,7 +205,7 @@ describe("generic-browser provider", () => {
       "https://example.com/start",
       expect.objectContaining({ signal: controller.signal }),
     );
-    // The page must still be closed so the profile lease is released.
+    // 即使任务被取消也必须关闭页面，确保 Profile Lease 能够释放。
     expect(close).toHaveBeenCalledTimes(1);
   });
 

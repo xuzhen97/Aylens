@@ -6,13 +6,7 @@ import { appConfigSchema, type AppConfig } from "./schema.js";
 const ENV_PATTERN = /\$\{([A-Z0-9_]+)(?::-(.*?))?\}/g;
 
 /**
- * Returns the index at which a YAML comment starts on `line`, or -1 when the
- * whole line is live content.
- *
- * A `#` opens a comment only at the start of a line or after whitespace, and
- * never inside a single- or double-quoted scalar. Block scalars (`|`, `>`) are
- * not modelled: their content is treated as live text, which matches the
- * previous behaviour of interpolating everything that is not a comment.
+ * 返回 YAML 行内注释开始的位置；如果整行都是有效内容则返回 -1。 * 只有行首或空白后的 # 才开始注释，引号内的 # 不算注释。 * 这里不解析块标量，其内容继续按有效文本处理，以保持既有环境变量插值行为。
  */
 function findCommentStart(line: string): number {
   let quote: '"' | "'" | undefined;
@@ -23,7 +17,7 @@ function findCommentStart(line: string): number {
     if (quote) {
       if (char !== quote) continue;
 
-      // A doubled quote inside a quoted scalar escapes that quote.
+      // 引号标量中的连续双引号表示转义后的引号，不能在这里结束引号状态。
       if (line[index + 1] === quote) {
         index += 1;
       } else {
@@ -56,11 +50,7 @@ function interpolateSegment(input: string, env: NodeJS.ProcessEnv): string {
   });
 }
 
-/**
- * Interpolates `${VAR}` / `${VAR:-fallback}` without touching commented-out
- * configuration. Commented example blocks such as
- * `#   url: "${PROXY_URL}"` must not require the variable to be set.
- */
+/** 对有效配置中的环境变量表达式进行插值，但不处理已注释的配置，因此注释示例中的变量无需真实存在。 */
 export function interpolateEnv(input: string, env: NodeJS.ProcessEnv = process.env): string {
   return input
     .split("\n")

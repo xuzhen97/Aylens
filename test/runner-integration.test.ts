@@ -56,7 +56,7 @@ async function startGateway(
   return { context, wsUrl: wsUrl.toString() };
 }
 
-/** Registers over a raw socket, returning the Gateway's single answer. */
+/** 通过原始 WebSocket 完成注册，并返回 Gateway 的单次响应。 */
 async function rawRegister(
   wsUrl: string,
   token: string,
@@ -241,15 +241,13 @@ describe("Gateway/Runner integration", () => {
 
     const second = await rawRegister(wsUrl, "dup-token", "dup-runner");
 
-    // Two live processes sharing one id used to replace each other in a loop:
-    // each reconnect kicked the other, forever. The newcomer is turned away with
-    // a reason it can log instead.
+    // 两个存活进程共享同一 ID 时不能互相循环替换；后来者应被明确拒绝并得到可记录的原因。
     expect(second.answer.kind).toBe("close");
     if (second.answer.kind !== "close") throw new Error("expected the Gateway to close the duplicate");
     expect(second.answer.code).toBe(1013);
     expect(second.answer.reason).toContain("already connected");
 
-    // The incumbent keeps the id.
+    // 当前存活实例继续持有该 ID。
     expect(context.runnerSessions.isAttached("dup-runner")).toBe(true);
     expect(context.runtimes.get("dup-runner")?.status).toBe("online");
   });
@@ -260,7 +258,7 @@ describe("Gateway/Runner integration", () => {
     const first = await rawRegister(wsUrl, "stale-token", "stale-runner");
     expect(first.answer).toMatchObject({ kind: "message", body: { type: "REGISTERED" } });
 
-    // The incumbent never sends HEARTBEAT, so it must not block its replacement.
+    // 当前实例从不发送 HEARTBEAT，因此超时后不能阻止替代实例接管。
     await new Promise((resolve) => setTimeout(resolve, 400));
 
     const second = await rawRegister(wsUrl, "stale-token", "stale-runner");

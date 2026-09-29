@@ -82,8 +82,7 @@ async function startServer(
 
 describe("AylensRunner reconnect", () => {
   it("registers again after the Gateway drops the connection", async () => {
-    // A Gateway restart closes the socket and `ws` never retries on its own, so
-    // the Runner used to stay alive but permanently unreachable.
+    // Gateway 重启会关闭连接，而 ws 不会自动重连；Runner 必须自行恢复连接，避免存活但永久不可达。
     const { port, getCount } = await startServer((socket, count) => {
       if (count === 1) socket.close(1001, "gateway restarting");
     });
@@ -103,8 +102,7 @@ describe("AylensRunner reconnect", () => {
   });
 
   it("keeps retrying until the Gateway exists, then reports the failure", async () => {
-    // No server yet: the first attempts must fail loudly and keep going, rather
-    // than hanging on a promise that never settles.
+    // 此时 Gateway 尚未启动：连接尝试必须明确失败并持续重试，不能让 Promise 永久挂起。
     const failures: number[] = [];
     const config = runnerConfig("ws://127.0.0.1:9/v1/runners/connect");
     runner = new AylensRunner(config, await createRunnerRuntime(config), {

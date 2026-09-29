@@ -36,5 +36,5 @@ const shutdown = async () => {
 process.on("SIGINT", () => void shutdown());
 process.on("SIGTERM", () => void shutdown());
 
-// `serve()` runs until shutdown: it owns the reconnect loop.
+// `serve()` 会持续运行直到关闭，并负责维护 Runner 的重连循环。
 await runner.serve();

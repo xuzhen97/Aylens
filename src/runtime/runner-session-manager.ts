@@ -10,7 +10,7 @@ interface PendingJob {
   reject: (reason: unknown) => void;
   timer?: NodeJS.Timeout | undefined;
   runtimeId: string;
-  /** Mirrors the Runner's own job lifecycle, so a timeout can say how far it got. */
+  /** 镜像 Runner 侧任务生命周期，使超时错误能够说明任务实际执行到了哪个阶段。 */
   accepted: boolean;
   started: boolean;
 }
@@ -37,7 +37,7 @@ export class RunnerSessionManager {
     return this.sockets.get(runtimeId) === socket;
   }
 
-  /** True when a socket for this Runner is attached and still open. */
+  /** 表示该 Runner 已绑定 WebSocket，并且连接仍处于打开状态。 */
   isAttached(runtimeId: string): boolean {
     const socket = this.sockets.get(runtimeId);
     return socket !== undefined && socket.readyState === socket.OPEN;
@@ -72,14 +72,13 @@ export class RunnerSessionManager {
   }
 
   handle(message: RunnerToGatewayMessage): void {
-    // Only job-scoped messages carry an executionId.
+    // 只有任务级消息才携带 executionId。
     if (message.type === "REGISTER" || message.type === "HEARTBEAT") return;
 
     const pending = this.pending.get(message.executionId);
     if (!pending) return;
 
-    // The Runner announces both phases. Recording them does not settle the job;
-    // it only makes a later timeout say whether the work ever began.
+    // Runner 会上报任务阶段；记录阶段不会结束任务，只用于在后续超时时判断真实工作是否已经开始。
     if (message.type === "JOB_ACCEPTED") {
       pending.accepted = true;
       return;
@@ -123,13 +122,7 @@ export class RunnerSessionManager {
     });
   }
 
-  /**
-   * Tells the Runner to stop working on a job the Gateway has given up on.
-   *
-   * CANCEL has been in the protocol from the start but nothing ever sent it, so
-   * a timed-out job kept running on the Runner and held its browser profile
-   * lease — the next job then queued behind work nobody was waiting for.
-   */
+  /** 通知 Runner 停止 Gateway 已经放弃的任务；必须主动发送 CANCEL，避免超时任务继续占用 Browser Profile Lease。 */
   private cancel(socket: WebSocket, request: RuntimeExecutionRequest): void {
     if (socket.readyState !== socket.OPEN) return;
 

@@ -9,9 +9,7 @@ export interface ProviderContext {
   runtimeId: string;
   jobId?: string | undefined;
   /**
-   * Aborted when the execution is cancelled — the Gateway gave up on the job,
-   * or the Runner is shutting down. Providers that can honour it should; the
-   * option is additive so existing plugins keep working unchanged.
+   * 当 Gateway 放弃任务或 Runner 正在关闭时触发取消；能响应取消信号的 Provider 应尽快停止工作。
    */
   signal?: AbortSignal | undefined;
 }

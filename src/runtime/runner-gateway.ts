@@ -21,9 +21,7 @@ export function attachRunnerGateway(options: {
   path: string;
   tokens: Record<string, string>;
   /**
-   * How long a Runner may go without a heartbeat before a new connection is
-   * allowed to take its id over. Without it a Runner that crashed without
-   * closing its socket would block its own replacement indefinitely.
+   * Runner 最长允许多久不发送心跳；超过该时间后，新连接可以接管相同 ID。   * 这样可以避免异常崩溃且未关闭 Socket 的 Runner 永久阻止替代实例上线。
    */
   heartbeatTimeoutMs: number;
   runtimes: RuntimeRegistry;
@@ -57,10 +55,7 @@ export function attachRunnerGateway(options: {
           return;
         }
 
-        // Two live processes claiming one id would otherwise kick each other in
-        // a loop: every reconnect replaces the other session, forever. Reject
-        // the newcomer with a reason instead — unless the incumbent has stopped
-        // heartbeating, in which case it is gone and this one takes over.
+        // 两个存活进程若声明同一 ID，会在重连时不断互相替换；因此拒绝后来者，除非原连接已经停止心跳。
         const incumbent = options.runtimes.get(message.runnerId);
         const incumbentIsFresh =
           incumbent !== undefined &&
