@@ -227,4 +227,4 @@ Runner protocol
 Gateway REST API
 ```
 
-这些边界构成当前 Provider 扩展方式。完整架构见 [../ARCHITECTURE.md](../ARCHITECTURE.md)。
+这些边界构成当前 Provider 扩展方式。完整架构见 [architecture.md](./architecture.md)。

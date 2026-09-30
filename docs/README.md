@@ -17,7 +17,7 @@
 
 当前代码实现就是项目架构基线：
 
-- [../ARCHITECTURE.md](../ARCHITECTURE.md) — 当前最终架构与职责边界
+- [architecture.md](./architecture.md) — 当前最终架构与职责边界
 
 ## 推荐阅读顺序
 
@@ -31,7 +31,7 @@
 
 1. [runtime.md](./runtime.md)
 2. [providers.md](./providers.md)
-3. [../ARCHITECTURE.md](../ARCHITECTURE.md)
+3. [architecture.md](./architecture.md)
 
 排查问题：
 

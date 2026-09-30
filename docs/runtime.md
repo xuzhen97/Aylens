@@ -30,7 +30,7 @@ Provider != Audit
 
 Provider 定义“如何访问目标渠道”；Dispatcher 决定“去哪里执行”；Runtime 提供本地能力；Transport 决定“怎么出网”；BrowserHost 管理浏览器和登录态。
 
-完整架构见 [../ARCHITECTURE.md](../ARCHITECTURE.md)。
+完整架构见 [architecture.md](./architecture.md)。
 
 ## Remote Runner
 

@@ -12,7 +12,7 @@ import { SearchService } from "../search/search-service.js";
  *
  * 这里保存 Provider 逻辑定义与调度要求、Runner 注册表、Runner 会话和审计信息。
  * 它刻意不持有 Transport、BrowserHost 或 Browser Profile；这些执行资源只属于 Runner。
- * 详细边界见 ARCHITECTURE.md。
+ * 详细边界见 docs/architecture.md。
  */
 export interface GatewayContext {
   config: AppConfig;
