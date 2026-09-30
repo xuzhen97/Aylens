@@ -130,7 +130,7 @@ dev-key
 src/providers/generic-browser/index.ts                 官方 Provider 源码
 release/providers/generic-browser.aylens-provider    独立 Provider 分发包
 config/aylens.yaml                                  providers.generic-browser + routes.default
-config/runner.yaml                                  plugins.modules + generic-login Profile
+config/runner.yaml                                  plugins.modules + browser-main Profile
 ```
 
 所以一条命令即可（会自动拉起 Gateway 和 Runner）：

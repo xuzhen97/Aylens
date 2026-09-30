@@ -65,7 +65,7 @@ describe("generic-browser provider", () => {
         type: "generic-browser",
         enabled: true,
         runtime: { nodeId: "runner-1" },
-        browser: { profile: "generic-login" },
+        browser: { profile: "browser-main" },
         options: {
           maxTextChars: 1000,
           snippetChars: 100,
@@ -89,7 +89,7 @@ describe("generic-browser provider", () => {
     );
 
     expect(calls).toEqual([
-      { profileId: "generic-login", jobId: "job-1" },
+      { profileId: "browser-main", jobId: "job-1" },
     ]);
     expect(goto).toHaveBeenCalledWith(
       "https://example.com/start",
@@ -106,11 +106,50 @@ describe("generic-browser provider", () => {
     expect(result.items[0]?.snippet).toHaveLength(100);
     expect(result.items[0]?.extensions).toMatchObject({
       requestedUrl: "https://example.com/start",
-      profileId: "generic-login",
+      profileId: "browser-main",
       httpStatus: 200,
       truncated: true,
     });
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the Runner default profile when the Provider does not declare one", async () => {
+    const page = {
+      goto: vi.fn(async () => ({ status: () => 200 })),
+      waitForTimeout: vi.fn(async () => undefined),
+      title: vi.fn(async () => "Example"),
+      url: vi.fn(() => "https://example.com/"),
+      locator: vi.fn(() => ({
+        first: () => ({ innerText: async () => "body" }),
+      })),
+      close: vi.fn(async () => undefined),
+    };
+
+    const { browser, calls } = fakeBrowser(page);
+    const factory = await genericFactory();
+    const provider = factory.create(
+      "generic-browser",
+      providerDeploymentSchema.parse({ type: "generic-browser" }),
+      {
+        transports: new TransportRegistry(),
+        browser,
+        defaultBrowserProfile: "browser-main",
+      },
+    );
+
+    await provider.search(
+      {
+        requestId: "request-default-profile",
+        traceId: "trace-default-profile",
+        runtimeId: "runner-1",
+        jobId: "job-default-profile",
+      },
+      { query: "https://example.com/" },
+    );
+
+    expect(calls).toEqual([
+      { profileId: "browser-main", jobId: "job-default-profile" },
+    ]);
   });
 
   it("keeps the page open when requested for interactive login bootstrapping", async () => {
@@ -135,7 +174,7 @@ describe("generic-browser provider", () => {
       providerDeploymentSchema.parse({
         type: "generic-browser",
         runtime: { nodeId: "runner-1" },
-        browser: { profile: "generic-login" },
+        browser: { profile: "browser-main" },
         options: { keepPageOpen: true },
       }),
       { transports: new TransportRegistry(), browser },
@@ -182,7 +221,7 @@ describe("generic-browser provider", () => {
       providerDeploymentSchema.parse({
         type: "generic-browser",
         runtime: { nodeId: "runner-1" },
-        browser: { profile: "generic-login" },
+        browser: { profile: "browser-main" },
         options: {},
       }),
       { transports: new TransportRegistry(), browser },
@@ -217,7 +256,7 @@ describe("generic-browser provider", () => {
       providerDeploymentSchema.parse({
         type: "generic-browser",
         runtime: { nodeId: "runner-1" },
-        browser: { profile: "generic-login" },
+        browser: { profile: "browser-main" },
         options: {},
       }),
       { transports: new TransportRegistry(), browser },
@@ -247,7 +286,7 @@ describe("generic-browser provider", () => {
       providerDeploymentSchema.parse({
         type: "generic-browser",
         runtime: { nodeId: "runner-1" },
-        browser: { profile: "generic-login" },
+        browser: { profile: "browser-main" },
         options: {},
       }),
       { transports: new TransportRegistry() },

@@ -39,7 +39,7 @@ Gateway Provider instance 和 Provider type 是不同概念：
 generic-browser     -> Provider instance
 generic-browser     -> Provider implementation type
 windows-generic-01  -> Runtime
-generic-login       -> Browser Profile
+browser-main       -> Browser Profile
 ```
 
 未来同一种 Provider type 可以创建多个 Provider instance。
@@ -152,7 +152,7 @@ providers:
         os: windows
         providerType: generic-browser
         browser: chrome
-        profile: generic-login
+        profile: browser-main
 
 ```
 
@@ -163,7 +163,7 @@ providers:
   generic-browser:
     type: generic-browser
     browser:
-      profile: generic-login
+      profile: browser-main
     options:
       waitUntil: domcontentloaded
       timeoutMs: 30000

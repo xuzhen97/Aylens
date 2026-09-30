@@ -7,13 +7,15 @@ plugins:
   modules:
     - "builtin:generic-browser"
 
+browser:
+  # 多个浏览器 Provider 默认共用这个持久化 Profile，统一保存各站点登录状态。
+  defaultProfile: browser-main
+
 providers:
   generic-browser:
     type: generic-browser
-    browser:
-      profile: generic-login
 
 browserProfiles:
-  generic-login:
-    userDataDir: "./.profiles/generic-login"
+  browser-main:
+    userDataDir: "./.profiles/browser-main"
     headless: true

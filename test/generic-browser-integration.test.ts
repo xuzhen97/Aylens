@@ -47,7 +47,7 @@ describe("generic-browser Gateway/Runner flow", () => {
             selector: {
               providerType: "generic-browser",
               browser: "chrome",
-              profile: "generic-login",
+              profile: "browser-main",
             },
           },
         },
@@ -76,17 +76,17 @@ describe("generic-browser Gateway/Runner flow", () => {
       providers: {
         browserRead: {
           type: "generic-browser",
-          browser: { profile: "generic-login" },
+          browser: { profile: "browser-main" },
           options: {},
         },
       },
       transports: { direct: { type: "direct" } },
       browserProfiles: {
-        "generic-login": {
+        "browser-main": {
           browser: "chrome",
           mode: "launch",
           persistent: true,
-          userDataDir: "D:/profiles/generic-login",
+          userDataDir: "D:/profiles/browser-main",
           maxConcurrency: 1,
           interactive: true,
           headless: false,
@@ -105,11 +105,11 @@ describe("generic-browser Gateway/Runner flow", () => {
 
     const profiles = new BrowserProfileManager();
     profiles.register({
-      id: "generic-login",
+      id: "browser-main",
       browser: "chrome",
       mode: "launch",
       persistent: true,
-      userDataDir: "D:/profiles/generic-login",
+      userDataDir: "D:/profiles/browser-main",
       maxConcurrency: 1,
       interactive: true,
       headless: false,
@@ -132,7 +132,7 @@ describe("generic-browser Gateway/Runner flow", () => {
 
     const browser: BrowserHost = {
       withProfile: async (profileId, jobId, callback) => {
-        expect(profileId).toBe("generic-login");
+        expect(profileId).toBe("browser-main");
         expect(jobId).toMatch(/^job_/);
         return callback({
           profileId,

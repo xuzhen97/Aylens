@@ -65,19 +65,23 @@ plugins:
     - "builtin:generic-browser"
     # 外部扩展推荐：- "./providers/example.aylens-provider"
 
+browser:
+  # 浏览器类 Provider 未显式指定 profile 时统一使用这里。
+  defaultProfile: browser-main
+
 providers:
   generic-browser:
     type: generic-browser
-    browser:
-      profile: generic-login
 
 browserProfiles:
-  generic-login:
-    userDataDir: "./.profiles/generic-login"
+  browser-main:
+    userDataDir: "./.profiles/browser-main"
     headless: true
 ```
 
 Runner 不再要求手工填写 `capabilities`。Provider Type 来自实际加载成功的 Plugin，Provider ID 来自本机 Deployment，Browser/Profile 能力来自实际 Browser Profile。Direct Transport、Plugin `baseDir`、心跳和并发数都有默认值。
+
+`browser.defaultProfile` 是 Runner 级共享浏览器工作区。多个浏览器 Provider 可以省略各自的 `browser.profile`，统一复用同一个持久化 Profile；需要隔离账号或代理时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
 
 ## Runtime 选择
 
@@ -96,7 +100,7 @@ providers:
         os: windows
         providerType: generic-browser
         browser: chrome
-        profile: generic-login
+        profile: browser-main
 
 ```
 
@@ -108,7 +112,7 @@ providers:
 - Runtime 已加载对应 Provider Plugin
 - Runtime 已部署 generic-browser 这个 Provider ID
 - Runtime 提供 Chrome
-- Runtime 拥有 generic-login Profile
+- Runtime 拥有 browser-main Profile
 
 Provider 的执行配置属于 Runner，例如：
 
@@ -117,7 +121,7 @@ providers:
   generic-browser:
     type: generic-browser
     browser:
-      profile: generic-login
+      profile: browser-main
     options:
       timeoutMs: 30000
 ```
@@ -174,11 +178,11 @@ Persistent Chrome：
 
 ```yaml
 browserProfiles:
-  generic-login:
+  browser-main:
     browser: chrome
     mode: launch
     persistent: true
-    userDataDir: "D:\\Aylens\\profiles\\generic-login"
+    userDataDir: "D:\\Aylens\\profiles\\browser-main"
     channel: chrome
     headless: false
     interactive: true

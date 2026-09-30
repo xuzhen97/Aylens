@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { appConfigSchema } from "../src/config/schema.js";
 import { interpolateEnv } from "../src/config/loader.js";
+import { runnerConfigSchema } from "../src/runner/config.js";
 
 describe("config", () => {
   it("interpolates environment values and fallbacks", () => {
@@ -56,6 +57,33 @@ describe("config", () => {
       offlineAfterMs: 60_000,
       jobTimeoutMs: 30_000,
     });
+  });
+
+  it("supports a shared Runner default browser profile and rejects an unknown default", () => {
+    const valid = runnerConfigSchema.safeParse({
+      runner: {
+        id: "runner-1",
+        gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect",
+        token: "token",
+      },
+      browser: { defaultProfile: "browser-main" },
+      browserProfiles: {
+        "browser-main": { userDataDir: "./.profiles/browser-main" },
+      },
+    });
+
+    const invalid = runnerConfigSchema.safeParse({
+      runner: {
+        id: "runner-1",
+        gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect",
+        token: "token",
+      },
+      browser: { defaultProfile: "missing" },
+      browserProfiles: {},
+    });
+
+    expect(valid.success).toBe(true);
+    expect(invalid.success).toBe(false);
   });
 
   it("rejects routes that reference unknown providers", () => {

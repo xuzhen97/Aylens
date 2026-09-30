@@ -102,11 +102,11 @@ export const genericBrowserFactory: ProviderFactory = {
     }
 
     const browser = services.browser;
-    const profileId = config.browser?.profile;
+    const profileId = config.browser?.profile ?? services.defaultBrowserProfile;
     if (!profileId) {
       throw structuredError(
         "PROFILE_AUTH_REQUIRED",
-        "generic-browser requires provider.browser.profile",
+        "generic-browser requires provider.browser.profile or runner.browser.defaultProfile",
       );
     }
 

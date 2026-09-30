@@ -22,6 +22,8 @@ export interface SearchProvider {
 export interface ProviderFactoryContext {
   transports: TransportRegistry;
   browser?: BrowserHost | undefined;
+  /** Runner 级默认浏览器 Profile；Provider 未显式指定时可复用同一持久化工作区。 */
+  defaultBrowserProfile?: string | undefined;
 }
 
 export interface ProviderFactory {

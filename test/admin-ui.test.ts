@@ -230,9 +230,9 @@ describe("admin UI", () => {
         providerTypes: ["generic-browser"],
         providerIds: ["browserRead"],
         browsers: ["chrome"],
-        profiles: ["generic-login"],
+        profiles: ["browser-main"],
         profileDetails: [{
-          id: "generic-login",
+          id: "browser-main",
           browser: "chrome",
           mode: "launch",
           activeLeases: 1,
@@ -255,7 +255,7 @@ describe("admin UI", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().browserProfiles).toEqual([{
-      id: "generic-login",
+      id: "browser-main",
       scope: "runner",
       runtimeId: "profile-runner",
       status: "busy",

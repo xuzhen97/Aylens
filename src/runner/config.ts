@@ -18,12 +18,23 @@ export const runnerConfigSchema = z.object({
     baseDir: z.string().min(1).default("."),
     modules: z.array(z.string().min(1)).default([]),
   }).default({ baseDir: ".", modules: [] }),
+  browser: z.object({
+    defaultProfile: z.string().min(1).optional(),
+  }).default({}),
   providers: z.record(z.string(), providerDeploymentSchema).default({}),
   transports: z.record(z.string(), transportSchema).default({
     direct: { type: "direct" },
   }),
   browserProfiles: z.record(z.string(), browserProfileSchema).default({}),
 }).superRefine((config, ctx) => {
+  if (config.browser.defaultProfile && !(config.browser.defaultProfile in config.browserProfiles)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["browser", "defaultProfile"],
+      message: `Unknown Runner-local default browser profile: ${config.browser.defaultProfile}`,
+    });
+  }
+
   for (const [profileId, profile] of Object.entries(config.browserProfiles)) {
     if (profile.mode === "cdp" && !profile.cdpEndpoint) {
       ctx.addIssue({

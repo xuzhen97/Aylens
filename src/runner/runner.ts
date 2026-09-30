@@ -273,6 +273,7 @@ export class AylensRunner {
         {
           transports: this.runtime.transports,
           browser: this.runtime.browser,
+          defaultBrowserProfile: this.config.browser.defaultProfile,
         },
       );
 

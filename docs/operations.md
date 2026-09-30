@@ -31,7 +31,7 @@ pnpm build
 ## 2. 启动 Gateway 与 Runner（推荐）
 
 默认配置已经接好 generic-browser —— Gateway 侧是 `config/aylens.yaml` 的 `providers` + `routes.default`，
-Runner 侧是 `config/runner.yaml` 的 `plugins.modules` + `generic-login` Profile —— 因此一条命令即可：
+Runner 侧是 `config/runner.yaml` 的 `plugins.modules` + `browser-main` Profile —— 因此一条命令即可：
 
 ```powershell
 pnpm dev:all
@@ -90,7 +90,7 @@ Runner 注册后应上报：
 
 - Provider type：generic-browser
 - Browser：chrome
-- Profile：generic-login
+- Profile：browser-main
 - browser automation capability
 
 ## 4. 验证 Runner 注册
@@ -148,8 +148,8 @@ pnpm smoke:generic-browser
 
 ## 7. 验证人工登录态
 
-默认 Runner Profile 是 `generic-login`，目录在仓库内的 `./.profiles/generic-login`
-（`config/runner.yaml` 的 `browserProfiles.generic-login.userDataDir`），不要指向日常 Chrome Profile。
+默认 Runner Profile 是 `browser-main`，目录在仓库内的 `./.profiles/browser-main`
+（`config/runner.yaml` 的 `browserProfiles.browser-main.userDataDir`），不要指向日常 Chrome Profile。
 
 默认是 `headless: true`，人工登录看不到窗口，需要先改成可见 + 交互模式：
 
@@ -288,7 +288,7 @@ Aylens Runner disconnected: Gateway closed the connection (1013 runner id alread
 典型错误：
 
 ```json
-{"code":"BROWSER_START_FAILED","message":"Failed to open browser profile: generic-login","retryable":true}
+{"code":"BROWSER_START_FAILED","message":"Failed to open browser profile: browser-main","retryable":true}
 ```
 
 这里的 `retryable: true` 是有误导性的：如果原因是 Profile 被占用，重试必然还是失败。

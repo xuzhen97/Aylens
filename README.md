@@ -133,7 +133,7 @@ dev-key
 ```
 
 默认配置已把 generic-browser 验证 Provider 接入 `routes.default`，
-同时 Runner 侧默认加载内置模块 `builtin:generic-browser` 与 `generic-login` Profile。
+同时 Runner 侧默认加载内置模块 `builtin:generic-browser`，并通过 `browser.defaultProfile=browser-main` 让浏览器类 Provider 默认共用同一个持久化 Profile。
 两个进程都起来后，Admin UI 的 Providers 显示 1/1、Runtimes 显示 1/1（Gateway 自身不算节点）；
 只起 Gateway 不起 Runner，/v1/search 会报无可用 Runtime。
 
@@ -150,7 +150,7 @@ src/providers/generic-browser/index.ts
 正式构建后，Runner 入口是 `release/runner/aylens-runner.mjs`；同一 Provider 源码还会生成 `release/providers/generic-browser.aylens-provider`，Gateway Bundle 不包含 Provider 执行逻辑。
 
 默认配置已经挂上它了（`config/aylens.yaml` 的 `providers` + `config/runner.yaml` 的
-`plugins.modules` 与 `generic-login` Profile），所以 `pnpm dev:all` 起来就能用。
+`plugins.modules` 与 `browser-main` Profile），所以 `pnpm dev:all` 起来就能用。
 
 真实 Chrome smoke test：
 
