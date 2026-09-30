@@ -10,7 +10,9 @@ import { SearchService } from "../search/search-service.js";
 /**
  * Gateway 上下文：仅负责控制面。
  *
- * 这里保存 Provider 逻辑定义与调度要求、Runner 注册表、Runner 会话和审计信息。  * 它刻意不持有 Transport、BrowserHost 或 Browser Profile；这些执行资源只属于 Runner。  * 详细边界见 docs/adr/2026-09-28-gateway-control-plane-only.md。
+ * 这里保存 Provider 逻辑定义与调度要求、Runner 注册表、Runner 会话和审计信息。
+ * 它刻意不持有 Transport、BrowserHost 或 Browser Profile；这些执行资源只属于 Runner。
+ * 详细边界见 ARCHITECTURE.md。
  */
 export interface GatewayContext {
   config: AppConfig;

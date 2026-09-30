@@ -203,6 +203,6 @@ pnpm smoke:generic-browser
 - 验证码不会出现
 - 所有代理都可用
 - Browser Profile 永远不会损坏
-- 所有未来 Provider 都自动安全
+- 所有新增 Provider 都自动安全
 
 真实渠道上线前仍需要独立 Provider 测试、风控处理和运行监控。

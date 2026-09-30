@@ -130,5 +130,3 @@ list_runtimes
 这些工具复用同一个 Gateway Context / SearchService。
 
 当前仓库还没有接入完整 MCP SDK server / wire transport，所以不要把 adapter 定义误认为已经存在一个可独立连接的 MCP Server。
-
-后续如果增加 MCP Server，应继续复用同一业务层，不复制 Search 逻辑。

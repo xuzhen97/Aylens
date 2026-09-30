@@ -264,8 +264,7 @@ Aylens Runner could not reach ws://127.0.0.1:3000/v1/runners/connect (attempt 2,
 Aylens Runner disconnected: Gateway closed the connection (1013 runner id already connected: dev-runner)
 ```
 
-已经有一个同 id 的 Runner 连着。Gateway **只接受一个**：新连接被拒（1013），不会踢掉旧的，
-所以两个进程不会再互相踢（以前是无限交替 replace）。
+已经有一个同 id 的 Runner 连着。Gateway **只接受一个**：新连接被拒（1013），不会踢掉旧的。
 
 处理：停掉多余的那个，或者让它们用不同的 `runner.id`（同时把新 id 加进 Gateway 的 `auth.runnerTokens`）。
 只有当旧连接累计 `runtimeRegistry.heartbeatTimeoutMs` 没有心跳时，新连接才允许接管这个 id。

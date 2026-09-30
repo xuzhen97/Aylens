@@ -44,7 +44,7 @@ Proxy credential、Chrome Profile、Cookie、Local Storage 等敏感状态只存
 Gateway 不访问目标网站、不创建 Transport、不启动 Chrome、不持有登录态；没有在线 Runner 时
 搜索返回明确的“无可用执行节点”错误，不做本地回退。
 
-当前实现以 README 与 `docs/` 下的运行文档为准；[ARCHITECTURE.md](./ARCHITECTURE.md) 是目标架构与演进路线，不表示其中能力都已实现。
+当前代码实现就是项目架构基线，完整边界见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
 ## 快速开始
 
@@ -251,7 +251,7 @@ pnpm smoke:generic-browser
 | [docs/admin-ui.md](./docs/admin-ui.md) | 后台 UI |
 | [docs/operations.md](./docs/operations.md) | 运行、验收、故障排查 |
 | [docs/testing.md](./docs/testing.md) | 测试与验证 |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 目标架构、长期设计与演进路线（非当前实现清单） |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 当前最终架构与职责边界 |
 
 ## 开发真实 Provider
 

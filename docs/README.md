@@ -15,11 +15,9 @@
 | [operations.md](./operations.md) | Gateway / Runner 启动、人工登录态验收、故障定位 |
 | [testing.md](./testing.md) | 测试矩阵、typecheck/build、集成测试、真实 Chrome smoke test |
 
-当前行为以本目录的运行文档和代码为准。根目录的架构文档用于目标设计与演进路线：
+当前代码实现就是项目架构基线：
 
-- [../ARCHITECTURE.md](../ARCHITECTURE.md) — 目标架构 / Roadmap，不是当前实现清单
-- [gateway-runner-boundary.md](./gateway-runner-boundary.md) — 已完成的 Gateway / Runner 边界重构设计记录
-- [adr/2026-09-28-gateway-control-plane-only.md](./adr/2026-09-28-gateway-control-plane-only.md) — 已生效的控制面决策
+- [../ARCHITECTURE.md](../ARCHITECTURE.md) — 当前最终架构与职责边界
 
 ## 推荐阅读顺序
 
@@ -33,7 +31,7 @@
 
 1. [runtime.md](./runtime.md)
 2. [providers.md](./providers.md)
-3. [../ARCHITECTURE.md](../ARCHITECTURE.md)（需要了解长期方向时再读）
+3. [../ARCHITECTURE.md](../ARCHITECTURE.md)
 
 排查问题：
 

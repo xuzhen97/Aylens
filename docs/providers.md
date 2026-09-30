@@ -227,6 +227,4 @@ Runner protocol
 Gateway REST API
 ```
 
-只有真正引入新的系统能力时，才需要扩展这些边界。
-
-完整设计见 [../ARCHITECTURE.md](../ARCHITECTURE.md)。
+这些边界构成当前 Provider 扩展方式。完整架构见 [../ARCHITECTURE.md](../ARCHITECTURE.md)。
