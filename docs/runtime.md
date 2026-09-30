@@ -74,7 +74,7 @@ Gateway
 
 ## Runtime-local Transport
 
-每个 Gateway / Runner 都有自己的 Transport Registry。
+Transport Registry 只存在于 Runner Runtime。Gateway 不创建 Provider 抓取用 Transport，也不持有代理配置。
 
 Provider 通过注入服务访问：
 
@@ -95,8 +95,10 @@ Browser automation 是 Runtime 服务，不是 HTTP Transport。
 Provider 可通过：
 
 ```js
+const profileId = config.browser?.profile ?? services.defaultBrowserProfile;
+
 await services.browser.withProfile(
-  config.browser.profile,
+  profileId,
   context.jobId,
   async ({ context: browserContext }) => {
     const page = await browserContext.newPage();
@@ -113,6 +115,8 @@ BrowserHost 会：
 4. 把 Context 交给 Provider；
 5. 操作结束释放 Lease；
 6. Runtime 关闭时清理 Aylens 自己创建的 Context。
+
+`browser.defaultProfile` 由 Runner 注入给 ProviderFactory。`generic-browser` 已实现“Provider 显式 `browser.profile` 优先，否则使用 Runner 默认 Profile”；其他 Browser Provider 如果也要复用这一机制，应采用同样的 fallback 逻辑。
 
 默认建议登录 Profile 使用：
 
@@ -148,7 +152,7 @@ Chrome 由外部程序管理时可使用 mode: cdp。
 
 浏览器状态天然属于本地 Runtime。
 
-因此 Profile 任务不能静默漂移到一个没有相同登录态的 Runner。调度时应把 profile 作为 capability / affinity 约束。
+因此 Profile 任务不能静默漂移到一个没有相同登录态的 Runner。多 Runner 部署同一个 Provider ID 时，如果任务依赖特定 Profile，应在 Gateway 的 `runtime.selector.profile` 中显式加入 affinity；`browser.defaultProfile` 是 Runner-local 执行配置，不会自动转化成 Gateway selector。
 
 ## Runner 配置示例
 
@@ -166,12 +170,19 @@ plugins:
     - "builtin:generic-browser"
     # 也可以加载 ./providers/example.aylens-provider、外部 ESM 路径或 npm package
 
+browser:
+  defaultProfile: browser-main
+
+providers:
+  generic-browser:
+    type: generic-browser
+
 browserProfiles:
-  account-main:
+  browser-main:
     browser: chrome
     mode: launch
     persistent: true
-    userDataDir: "D:\\Aylens\\profiles\\account-main"
+    userDataDir: "D:\\Aylens\\profiles\\browser-main"
     channel: chrome
     headless: false
     interactive: true

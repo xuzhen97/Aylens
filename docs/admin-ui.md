@@ -115,22 +115,25 @@ offline
 - Provider type
 - enabled / disabled
 - Runtime 选择策略
-- Browser Profile 逻辑名称
-- Transport 逻辑名称
 
-不会返回 Provider options 的原始内容。
+Gateway Provider Definition 不包含 Runner-local Browser Profile、Transport 或 Provider options，因此 Providers 页面也不会展示这些本地执行配置。
 
 ## Browser Profiles 页面
 
-只展示 Runner capability 声明的远程 Profile：
+只展示 Runner capability 声明的远程 Profile。当前 Runner 会上报安全的 `profileDetails`，页面可展示：
 
 - Runner ID
 - Profile ID
 - browser
+- mode（launch / cdp）
+- available / busy / draining / offline 状态
+- activeLeases / maxConcurrency
+- interactive
+- Transport 逻辑名称
 
 Gateway 不持有任何 Profile，也不再启动浏览器，因此不存在“Gateway 本地 Profile”。
 
-Runner 目前只上报逻辑 Profile capability，因此无法可靠展示远程 lease 数时，会明确显示未上报，而不是伪造为 0。
+为兼容旧 Runner，如果只上报逻辑 Profile ID 而没有 `profileDetails`，相关详细字段会显示“Runner 未上报”，不会伪造为 0。
 
 不会显示：
 

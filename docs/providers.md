@@ -23,12 +23,12 @@ Provider 实现通过 Factory 注册。
 概念接口：
 
 ```ts
-export interface ProviderFactory<TConfig = unknown> {
+export interface ProviderFactory {
   readonly type: string;
   create(
     id: string,
-    config: TConfig,
-    services: ProviderContext
+    config: ProviderDeploymentConfig,
+    context: ProviderFactoryContext
   ): SearchProvider;
 }
 ```
@@ -42,7 +42,7 @@ windows-generic-01  -> Runtime
 browser-main       -> Browser Profile
 ```
 
-未来同一种 Provider type 可以创建多个 Provider instance。
+同一种 Provider type 可以创建多个 Provider instance。
 
 ### Provider ID、Type 与 Implementation
 
@@ -82,8 +82,9 @@ export default {
           async search(context, request) {
             // services.transports
             // services.browser
+            // services.defaultBrowserProfile
             // config.options
-            // config.browser?.profile
+            // const profileId = config.browser?.profile ?? services.defaultBrowserProfile
 
             return {
               items: [],
@@ -120,7 +121,7 @@ src/providers/generic-browser/index.ts
 POST /v1/search
   -> SearchService
   -> ExecutionDispatcher
-  -> Windows Runner
+  -> Remote Runner
   -> generic-browser Plugin
   -> BrowserHost.withProfile(...)
   -> persistent Chrome
@@ -159,11 +160,12 @@ providers:
 Runner Provider Deployment：
 
 ```yaml
+browser:
+  defaultProfile: browser-main
+
 providers:
   generic-browser:
     type: generic-browser
-    browser:
-      profile: browser-main
     options:
       waitUntil: domcontentloaded
       timeoutMs: 30000
@@ -175,16 +177,22 @@ providers:
       keepPageOpen: false
 ```
 
+`generic-browser` 会优先使用显式 `provider.browser.profile`，未配置时使用 Runner 注入的 `services.defaultBrowserProfile`。其他 Browser Provider 若要共享同一浏览器工作区，也应实现相同 fallback。
+
 Gateway 只用 Definition 做路由和调度；Runner 根据相同的 Provider ID 找到本地 Deployment，并使用本地执行配置创建 Provider。
 
 结果会归一化成统一 SearchDocument。
 
 ## 人工登录态
 
-登录型网站可临时把：
+登录型网站可在 Runner Provider Deployment 中临时设置：
 
 ```yaml
-keepPageOpen: true
+providers:
+  generic-browser:
+    type: generic-browser
+    options:
+      keepPageOpen: true
 ```
 
 然后：

@@ -81,11 +81,11 @@ browserProfiles:
 
 Runner 不再要求手工填写 `capabilities`。Provider Type 来自实际加载成功的 Plugin，Provider ID 来自本机 Deployment，Browser/Profile 能力来自实际 Browser Profile。Direct Transport、Plugin `baseDir`、心跳和并发数都有默认值。
 
-`browser.defaultProfile` 是 Runner 级共享浏览器工作区。多个浏览器 Provider 可以省略各自的 `browser.profile`，统一复用同一个持久化 Profile；需要隔离账号或代理时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
+`browser.defaultProfile` 是 Runner 级共享浏览器工作区。Runner 会把它作为 `services.defaultBrowserProfile` 注入 ProviderFactory；`generic-browser` 已支持在未配置 `provider.browser.profile` 时使用该默认值。其他 Browser Provider 也应采用 `config.browser?.profile ?? services.defaultBrowserProfile` 的逻辑。需要隔离账号或代理时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
 
 ## Runtime 选择
 
-Provider 定义与执行机器是两个概念。默认情况下无需配置 `runtime`，Gateway 会自动要求目标 Runner 实际部署同一个 Provider ID，并匹配 Provider Type。只有需要固定机器或增加 placement 约束时，才配置 `runtime.nodeId` 或 `runtime.selector`。
+Provider 定义与执行机器是两个概念。默认情况下无需配置 `runtime`，Gateway 会要求目标 Runner 实际部署同一个 Provider ID，并匹配 Provider Type。只有需要固定机器或增加 placement 约束时，才配置 `runtime.nodeId` 或 `runtime.selector`。注意 Runner 的 `browser.defaultProfile` 不会自动成为 Gateway 调度条件；多 Runner 场景若依赖特定 Profile，应显式配置 `runtime.selector.profile`。
 
 示例：
 
@@ -114,17 +114,20 @@ providers:
 - Runtime 提供 Chrome
 - Runtime 拥有 browser-main Profile
 
-Provider 的执行配置属于 Runner，例如：
+Provider 的执行配置属于 Runner。使用共享默认 Profile 时可以不重复声明 `browser.profile`：
 
 ```yaml
+browser:
+  defaultProfile: browser-main
+
 providers:
   generic-browser:
     type: generic-browser
-    browser:
-      profile: browser-main
     options:
       timeoutMs: 30000
 ```
+
+只有需要覆盖默认工作区时，才在该 Provider 下显式配置 `browser.profile`。
 
 Gateway 不需要知道远程机器上的 Chrome 路径、Provider Options、Cookie 或代理配置。
 

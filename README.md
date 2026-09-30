@@ -44,7 +44,7 @@ Proxy credential、Chrome Profile、Cookie、Local Storage 等敏感状态只存
 Gateway 不访问目标网站、不创建 Transport、不启动 Chrome、不持有登录态；没有在线 Runner 时
 搜索返回明确的“无可用执行节点”错误，不做本地回退。
 
-完整设计见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+当前实现以 README 与 `docs/` 下的运行文档为准；[ARCHITECTURE.md](./ARCHITECTURE.md) 是目标架构与演进路线，不表示其中能力都已实现。
 
 ## 快速开始
 
@@ -68,13 +68,20 @@ pnpm build
 
 ```text
 release/
+├── README.md
+├── ecosystem.config.cjs
+├── pm2-start.ps1 / pm2-start.cmd / pm2-start.sh
 ├── gateway/
 │   ├── aylens-gateway.mjs
 │   ├── package.json
+│   ├── ecosystem.config.cjs
+│   ├── pm2-start.*
 │   └── config/aylens.yaml
 ├── runner/
 │   ├── aylens-runner.mjs
 │   ├── package.json
+│   ├── ecosystem.config.cjs
+│   ├── pm2-start.*
 │   └── config/runner.yaml
 └── providers/
     └── generic-browser.aylens-provider
@@ -102,10 +109,7 @@ pnpm dev:runner
 pnpm dev:all
 ```
 
-`dev:all` 会先等 Gateway `/ready` 通过再拉起 Runner，之后持续监督两个进程：
-任何一侧掉线都会自动重新拉起（包括 `tsx watch` 重载后撞 `EADDRINUSE` 不再恢复的 Gateway）。
-Runner 自身也带指数退避重连，所以先起 Runner、后起 Gateway 同样可行。
-之后它持续监督两个进程：任何一侧因 `tsx watch` 重载而掉线，都会自动重新拉起。
+`dev:all` 会先等 Gateway `/ready` 可访问再拉起 Runner，并持续监督两个进程。Gateway 不可达时会重启 Gateway；Runner 进程退出时也会由 supervisor 拉起。Runner 自身同时具备指数退避重连能力。
 
 默认配置：
 
@@ -229,7 +233,7 @@ pnpm smoke:generic-browser
 
 ```text
 13 个测试文件
-42 个测试
+50 个测试
 ```
 
 详见 [docs/testing.md](./docs/testing.md)。
@@ -247,7 +251,7 @@ pnpm smoke:generic-browser
 | [docs/admin-ui.md](./docs/admin-ui.md) | 后台 UI |
 | [docs/operations.md](./docs/operations.md) | 运行、验收、故障排查 |
 | [docs/testing.md](./docs/testing.md) | 测试与验证 |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 完整架构设计 |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 目标架构、长期设计与演进路线（非当前实现清单） |
 
 ## 开发真实 Provider
 

@@ -32,6 +32,17 @@ Runner WebSocket：
 /admin/tester
 ```
 
+`GET /ready` 当前返回 Gateway 自身 ready 状态和 Runtime Registry 中的 Runner 数量，例如：
+
+```json
+{
+  "status": "ready",
+  "runtimes": 1
+}
+```
+
+`/ready` 不要求所有 Runner 在线；它本身不是 Provider 可用性探针。
+
 ## 鉴权
 
 除 Runner WebSocket 的专用认证流程外，受保护的 /v1/* HTTP 接口使用：

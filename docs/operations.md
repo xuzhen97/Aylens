@@ -25,7 +25,7 @@ pnpm build
 
 ```text
 13 个测试文件
-42 个测试
+50 个测试
 ```
 
 ## 2. 启动 Gateway 与 Runner（推荐）
@@ -37,15 +37,17 @@ Runner 侧是 `config/runner.yaml` 的 `plugins.modules` + `browser-main` Profil
 pnpm dev:all
 ```
 
-它会先等 Gateway `/ready` 通过再拉起 Runner，之后持续监督两者：任何一侧掉线都会自动重新拉起。
+它会先等 Gateway `/ready` 可访问再拉起 Runner，并持续监督进程。当前 `scripts/dev-all.ts` 的 Runner-ready 探针仍读取旧字段 `remoteRuntimes`，而 Gateway `/ready` 已返回 `runtimes`，因此脚本可能错误打印“runner has not registered yet”。实际 Runner 状态请以 `/v1/runtimes` 或 Admin UI 为准；这是当前代码中的已知字段漂移。
 
-预期输出：
+当前日志可能输出：
 
 ```text
 [dev:all] gateway is up on http://127.0.0.1:3000
 [runner] Aylens Runner connected: dev-runner
-[dev:all] gateway + runner are ready
+[dev:all] runner has not registered yet — the supervisor keeps watching for it
 ```
+
+这里第三行是上面所述 `/ready` 字段漂移导致的误判；如果 `/v1/runtimes` 已显示 `dev-runner` 为 online，则 Runner 实际已经注册成功。
 
 健康检查：
 
@@ -54,7 +56,7 @@ curl.exe http://127.0.0.1:3000/health
 curl.exe http://127.0.0.1:3000/ready
 ```
 
-`/ready` 的 `remoteRuntimes` 应为 `1`。Admin UI：
+`/ready` 当前返回 `{ "status": "ready", "runtimes": <数量> }`；Runner 注册后 `runtimes` 应为 `1`。Admin UI：
 
 ```text
 http://127.0.0.1:3000/admin
@@ -158,10 +160,14 @@ pnpm smoke:generic-browser
     interactive: true
 ```
 
-Gateway 侧（`config/aylens.yaml`）可临时设置：
+`keepPageOpen` 属于 Runner Provider Deployment，不属于 Gateway 配置。可在 `config/runner.yaml` 中临时设置：
 
 ```yaml
-keepPageOpen: true
+providers:
+  generic-browser:
+    type: generic-browser
+    options:
+      keepPageOpen: true
 ```
 
 流程：
@@ -174,7 +180,7 @@ keepPageOpen: true
 6. 验证返回内容包含 authenticated-only 内容；
 7. 登录稳定后把 keepPageOpen 改回 false。
 
-登录状态只留在 Windows Runtime。
+登录状态只留在实际执行该 Profile 的 Runner 本地。
 
 ## 8. 验证 Runner 重启后持久化
 
@@ -354,7 +360,7 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 2. pnpm test 通过；
 3. pnpm build 通过；
 4. Gateway /health / /ready 正常；
-5. Windows Runner online；
+5. Runner online；
 6. Runtime capability 与实际 Plugin/Profile 一致；
 7. generic-browser 能读取 https://example.com；
 8. 真实 Chrome smoke test 通过；

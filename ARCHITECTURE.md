@@ -1,12 +1,43 @@
 # Aylens — AI Agent 统一互联网检索网关架构方案
 
-> 状态：Architecture Proposal  
+> 状态：Target Architecture / Roadmap
 > 技术栈：Node.js + TypeScript  
+> 文档性质：本文描述长期目标、设计原则和演进方向，**不是当前实现清单**。当前行为以 `README.md`、`docs/` 运行文档和代码为准。
 > 目标：为 AI Agent 提供统一、可扩展、可配置、可审计，并支持跨主机 Provider / Browser Runtime 的互联网检索与内容读取能力。
 >
-> **执行边界**：Gateway 只做控制与调度，所有抓取必须经 Runner；Gateway 进程不加载执行型 Provider，
+> **已落地执行边界**：Gateway 只做控制与调度，所有抓取必须经 Runner；Gateway 进程不加载执行型 Provider，
 > 也不持有 Transport / Browser Profile / 登录态。该决策的正式记录见
-> [docs/adr/2026-09-28-gateway-control-plane-only.md](./adr/2026-09-28-gateway-control-plane-only.md)。
+> [docs/adr/2026-09-28-gateway-control-plane-only.md](./docs/adr/2026-09-28-gateway-control-plane-only.md)。
+
+---
+
+## 当前实现快照
+
+截至当前代码，已经实现：
+
+- Fastify REST Gateway、API Key 鉴权与 Admin UI；
+- Gateway 纯控制面，Provider 只在远程 Runner 执行；
+- Runner WebSocket 注册、心跳、`EXECUTE` / `CANCEL`、容量与 capability 上报；
+- Provider Plugin / `.aylens-provider` 加载；
+- Direct / HTTP Proxy / SOCKS5 Transport；
+- persistent Chrome、CDP attach、Browser Profile Lease、Runner 默认共享 Profile；
+- `POST /v1/search`、Provider/Runtime/Audit 查询接口；
+- 内存 Audit；
+- MCP `search` / `list_runtimes` tool adapter definitions（没有独立 MCP Server）。
+
+当前**尚未实现**，本文后续章节出现时都应理解为目标设计：
+
+- `ReadService` / 独立 Read API；
+- Query Planner；
+- Cache、Normalize / Dedupe / Rank / Diversity pipeline；
+- PostgreSQL、Redis、Object Storage；
+- OpenTelemetry / Prometheus 等完整可观测设施；
+- 完整 MCP SDK Server / wire transport；
+- Google、Brave、X、知乎、小红书等真实渠道 Provider；
+- 通用 Provider 重试 / fallback / circuit breaker / proxy pool；
+- 完整 NetworkPolicy 与私网 SSRF 防护。当前 `generic-browser` 只限制 HTTP/HTTPS，并拒绝 URL 内嵌用户名密码。
+
+本文中的 V1/V2/V3 分期是规划参考，部分能力已经提前实现、部分仍未实现；判断当前状态时不要按章节分期推断。
 
 ---
 
@@ -14,7 +45,7 @@
 
 Aylens 是一个面向 AI Agent 的统一互联网检索网关（Retrieval Gateway）。
 
-它不是“某几个网站的爬虫集合”，也不把业务逻辑绑定到 Google、X、知乎、小红书等具体平台，而是通过统一协议向上层 Agent 提供：
+它不是“某几个网站的爬虫集合”，也不把业务逻辑绑定到 Google、X、知乎、小红书等具体平台。长期目标是通过统一协议向上层 Agent 提供：
 
 - 多来源统一搜索；
 - URL 内容读取与正文抽取；
@@ -129,7 +160,7 @@ API / MCP 负责：协议适配，不承载业务逻辑。
 
 ---
 
-## 4. 总体架构
+## 4. 目标总体架构
 
 Aylens 采用 **Control Plane + Distributed Execution Plane + Browser Plane**。Gateway 只负责控制与调度，每个 Provider Operation 都下发到已连接的 Linux/Windows Runner 执行；Gateway 自身不访问目标网站。
 
@@ -3463,9 +3494,11 @@ Gateway 的 `/ready` 不应该要求所有远端 Runner 在线，否则一台家
 
 ---
 
-## 55. 推荐 V1 范围
+## 55. 原始 V1 规划范围（历史参考）
 
 由于 Browser/远程主机已经是明确需求，Runner 不应再推迟到 V2。
+
+> 本节以及后续 V2/V3 是原始规划分期，不代表当前实现状态。当前状态请以文档开头的“当前实现快照”和 `docs/` 为准。
 
 ### Gateway
 

@@ -1,13 +1,14 @@
 # Gateway 与 Runner 执行边界调整设计
 
-> 状态：设计草案  
+> 状态：已落地（历史设计与迁移记录）
+> 当前代码已经完成本文所述 Gateway 纯控制面 / Runner 执行面重构。文中“调整前”“目标”“迁移步骤”等章节用于保留设计背景，不应视为当前代码状态。
 > 范围：仅调整 Gateway 与 Runner 的职责边界，不包含 Operation/Execution 泛化、ReadService、缓存、排序等后续架构演进。
 
 ## 1. 背景
 
-当前 Aylens 已经具备 Gateway、Remote Runner、Provider Plugin、Transport、BrowserHost 和 Chrome Profile 等基础能力。
+进行本次重构前，Aylens 已经具备 Gateway、Remote Runner、Provider Plugin、Transport、BrowserHost 和 Chrome Profile 等基础能力。
 
-但当前 Gateway 同时具备两种角色：
+当时 Gateway 同时具备两种角色：
 
 1. **控制节点**：接收请求、路由 Provider、选择 Runtime、下发任务、汇总结果、记录审计。
 2. **本地执行节点**：通过 `LocalRuntime` 在 Gateway 进程内创建 Provider，并直接使用本地 Transport、BrowserHost、Browser Profile 访问互联网。
@@ -20,7 +21,7 @@
 
 ---
 
-## 2. 当前架构
+## 2. 调整前架构（历史）
 
 ```mermaid
 flowchart TB

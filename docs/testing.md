@@ -36,7 +36,7 @@ git diff --check
 
 ```text
 13 个测试文件
-48 个测试
+50 个测试
 全部通过
 ```
 
@@ -52,7 +52,7 @@ pnpm smoke:generic-browser
 
 | 测试文件 | 测试数 | 主要内容 |
 | --- | ---: | --- |
-| test/config.test.ts | 8 | 环境变量插值、Gateway 默认段、Route / Provider 配置校验、自动/显式 Runner placement |
+| test/config.test.ts | 9 | 环境变量插值、Gateway 默认段、Route / Provider 配置校验、Runner placement、共享默认 Browser Profile 校验 |
 | test/runtime-registry.test.ts | 2 | Runtime capability 匹配与低负载选择、无匹配时报错 |
 | test/profile-manager.test.ts | 1 | Profile Lease、并发限制、释放 |
 | test/search-service.test.ts | 4 | 空 route、经已连接 Runner 执行、Audit |
@@ -61,7 +61,7 @@ pnpm smoke:generic-browser
 | test/browser-host.test.ts | 2 | BrowserHost 复用、Lease、Runtime-local proxy |
 | test/runner-session-manager.test.ts | 4 | Runner 结构化错误跨协议保真 |
 | test/runner-reconnect.test.ts | 3 | Runner 重连与同一 id 接管 |
-| test/generic-browser-provider.test.ts | 5 | URL 校验、正文提取、截断、keepPageOpen、取消信号 |
+| test/generic-browser-provider.test.ts | 6 | URL 校验、正文提取、截断、keepPageOpen、取消信号、Runner 默认 Profile |
 | test/generic-browser-integration.test.ts | 1 | Gateway/Runner WebSocket + generic-browser 结果 |
 | test/runner-integration.test.ts | 4 | Runner 注册、capability、动态 Plugin |
 | test/admin-ui.test.ts | 9 | Admin 多页面、主题、JS、鉴权、脱敏、Runner Profile 状态 |
@@ -69,7 +69,7 @@ pnpm smoke:generic-browser
 总数：
 
 ```text
-8 + 2 + 1 + 4 + 2 + 3 + 2 + 4 + 3 + 5 + 1 + 4 + 9 = 48
+9 + 2 + 1 + 4 + 2 + 3 + 2 + 4 + 3 + 6 + 1 + 4 + 9 = 50
 ```
 
 ## 各层测试关注点
@@ -194,7 +194,7 @@ pnpm smoke:generic-browser
 
 ## 测试通过不代表什么
 
-48 个自动测试通过代表当前代码边界在测试覆盖范围内工作。
+50 个自动测试通过代表当前代码边界在测试覆盖范围内工作。
 
 它不代表：
 

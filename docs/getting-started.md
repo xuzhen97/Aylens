@@ -30,7 +30,7 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway。
 要求：
 
 - Node.js 24 或更高版本
-- pnpm 11
+- pnpm 10.26+（仓库未在 `package.json` 中锁定 `packageManager`；pnpm 10.26 与 11 均可使用当前 workspace 配置）
 - 如需真实浏览器测试：本机安装 Google Chrome
 
 安装依赖：
@@ -51,13 +51,20 @@ pnpm build
 
 ```text
 release/
+├── README.md
+├── ecosystem.config.cjs
+├── pm2-start.ps1 / pm2-start.cmd / pm2-start.sh
 ├── gateway/
 │   ├── aylens-gateway.mjs
 │   ├── package.json
+│   ├── ecosystem.config.cjs
+│   ├── pm2-start.*
 │   └── config/aylens.yaml
 ├── runner/
 │   ├── aylens-runner.mjs
 │   ├── package.json
+│   ├── ecosystem.config.cjs
+│   ├── pm2-start.*
 │   └── config/runner.yaml
 └── providers/
     └── generic-browser.aylens-provider
@@ -118,7 +125,7 @@ http://127.0.0.1:3000/admin
 dev-key
 ```
 
-默认配置没有任何 Provider 时，/v1/search 会成功返回空结果。
+如果使用自定义配置且默认 route 没有任何 Provider，`/v1/search` 会成功返回空结果。
 本仓库的默认配置已经把 generic-browser 验证 Provider 接进 `routes.default`，
 所以请同时启动 Runner，否则 /v1/search 会报找不到可用 Runtime。
 
