@@ -8,8 +8,13 @@ auth:
 providers:
   generic-browser:
     type: generic-browser
+  x:
+    type: x-search
 
 routes:
   default:
     providers:
       - generic-browser
+  x:
+    providers:
+      - x

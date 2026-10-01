@@ -3,7 +3,7 @@ import WebSocket from "ws";
 import type { RunnerConfig } from "./config.js";
 import type { RunnerRuntime } from "./runtime.js";
 import { createId } from "../shared/ids.js";
-import { toErrorPayload } from "../core/errors.js";
+import { RetrievalError, toErrorPayload } from "../core/errors.js";
 import { searchRequestSchema } from "../contracts/validation.js";
 import {
   gatewayToRunnerSchema,
@@ -266,7 +266,6 @@ export class AylensRunner {
         );
       }
 
-      const request = searchRequestSchema.parse(message.input);
       const provider = this.runtime.providers.create(
         message.providerId,
         deployment,
@@ -274,19 +273,41 @@ export class AylensRunner {
           transports: this.runtime.transports,
           browser: this.runtime.browser,
           defaultBrowserProfile: this.config.browser.defaultProfile,
+          reportAuthState: (state) => this.runtime.reportProviderAuthState(message.providerId, state),
         },
       );
 
-      const output = await provider.search(
-        {
-          requestId: message.requestId,
-          traceId: message.traceId,
-          runtimeId: this.config.runner.id,
-          jobId: message.jobId,
-          signal: controller.signal,
-        },
-        request,
-      );
+      const providerContext = {
+        requestId: message.requestId,
+        traceId: message.traceId,
+        runtimeId: this.config.runner.id,
+        jobId: message.jobId,
+        signal: controller.signal,
+      };
+
+      let output;
+      if (message.operation === "search") {
+        const request = searchRequestSchema.parse(message.input);
+        output = await provider.search(providerContext, request);
+      } else if (message.operation === "auth_check") {
+        if (!provider.checkAuth) {
+          throw new RetrievalError(
+            "PROVIDER_UNAVAILABLE",
+            `Provider does not support auth status checks: ${message.providerId}`,
+          );
+        }
+        output = await provider.checkAuth(providerContext);
+        this.runtime.reportProviderAuthState(message.providerId, output);
+      } else {
+        if (!provider.openLogin) {
+          throw new RetrievalError(
+            "PROVIDER_UNAVAILABLE",
+            `Provider does not support interactive login: ${message.providerId}`,
+          );
+        }
+        output = await provider.openLogin(providerContext);
+        this.runtime.reportProviderAuthState(message.providerId, output);
+      }
 
       // 故意先发送 HEARTBEAT，使 Gateway 在 JOB_RESULT 触发后续调度前先看到已释放的执行容量。
       releaseCapacity();
@@ -382,6 +403,9 @@ export class AylensRunner {
     return {
       providerTypes: this.runtime.pluginTypes,
       providerIds: Object.keys(this.runtime.deployments),
+      authProviderIds: Object.entries(this.runtime.deployments)
+        .filter(([, deployment]) => this.runtime.providers.supportsAuth(deployment.type))
+        .map(([providerId]) => providerId),
       browsers: [...new Set(profiles.map((profile) => profile.browser))],
       profiles: profiles.map((profile) => profile.id),
       // 只上报可观测字段；userDataDir、CDP endpoint、可执行路径、Cookie/凭据等始终留在 Runner 本机。
@@ -392,8 +416,9 @@ export class AylensRunner {
         activeLeases: profile.activeLeases,
         maxConcurrency: profile.maxConcurrency,
         interactive: profile.interactive,
-        transport: profile.transport ?? "direct",
+        transport: profile.transport ?? (profile.mode === "cdp" ? "browser/system" : "direct"),
       })),
+      providerStates: Object.fromEntries(this.runtime.providerAuthStates.entries()),
       // Transport 与 Browser capability 来自 Runner 实际构建成功的本地资源，避免配置声明与真实能力漂移。
       http: true,
       browserAutomation: profiles.length > 0,

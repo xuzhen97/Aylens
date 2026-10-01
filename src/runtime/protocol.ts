@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { providerAuthStateSchema } from "../contracts/validation.js";
 
 export const RUNNER_PROTOCOL_VERSION = "1";
 
@@ -15,10 +16,12 @@ const browserProfileStateSchema = z.object({
 const capabilitiesSchema = z.object({
   providerTypes: z.array(z.string()),
   providerIds: z.array(z.string()),
+  authProviderIds: z.array(z.string()).default([]),
   browsers: z.array(z.string()),
   profiles: z.array(z.string()),
   // 兼容旧 Runner：调度仍使用 profiles；详细状态是增量可观测字段。
   profileDetails: z.array(browserProfileStateSchema).default([]),
+  providerStates: z.record(z.string(), providerAuthStateSchema).default({}),
   http: z.boolean(),
   browserAutomation: z.boolean(),
 });
@@ -72,7 +75,10 @@ export const runnerToGatewaySchema = z.discriminatedUnion("type", [
     runnerId: z.string(),
     jobId: z.string(),
     executionId: z.string(),
-    output: z.object({ items: z.array(z.unknown()) }),
+    output: z.union([
+      z.object({ items: z.array(z.unknown()) }),
+      providerAuthStateSchema,
+    ]),
     timestamp: z.number(),
   }),
   z.object({
@@ -104,7 +110,7 @@ export const gatewayToRunnerSchema = z.discriminatedUnion("type", [
     executionId: z.string(),
     providerId: z.string(),
     providerType: z.string(),
-    operation: z.literal("search"),
+    operation: z.enum(["search", "auth_check", "auth_login"]),
     input: z.unknown(),
     requestId: z.string(),
     traceId: z.string(),

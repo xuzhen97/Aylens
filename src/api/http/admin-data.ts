@@ -110,12 +110,26 @@ export function buildAdminOverview(context: GatewayContext) {
     });
   });
 
-  const providers = context.providers.list().map(({ id, config }) => ({
-    id,
-    type: config.type,
-    enabled: config.enabled,
-    runtime: toSafeRuntimeTarget(config.runtime),
-  }));
+  const providers = context.providers.list().map(({ id, config }) => {
+    const authRuntimes = runtimes
+      .filter((runtime) => runtime.capabilities.authProviderIds?.includes(id))
+      .map((runtime) => ({
+        runtimeId: runtime.id,
+        state: runtime.capabilities.providerStates?.[id],
+      }))
+      .sort((a, b) => (b.state?.checkedAt ?? 0) - (a.state?.checkedAt ?? 0));
+    const latestAuth = authRuntimes[0];
+
+    return {
+      id,
+      type: config.type,
+      enabled: config.enabled,
+      runtime: toSafeRuntimeTarget(config.runtime),
+      authControl: authRuntimes.length > 0,
+      ...(latestAuth ? { authRuntimeId: latestAuth.runtimeId } : {}),
+      ...(latestAuth?.state ? { auth: latestAuth.state } : {}),
+    };
+  });
 
   const audits = context.audit.list(30).map(toSafeAudit);
   const onlineNodes = runtimes.filter((runtime) =>

@@ -4,9 +4,27 @@ export default {
   factories: [
     {
       type: "fixture-remote",
+      authControl: true,
       create(id, _config, services) {
         return {
           id,
+          async checkAuth() {
+            const state = {
+              status: "authenticated",
+              account: { handle: "@fixture", displayName: "Fixture User" },
+              checkedAt: Date.now(),
+            };
+            services.reportAuthState?.(state);
+            return state;
+          },
+          async openLogin() {
+            const state = {
+              status: "auth_required",
+              checkedAt: Date.now(),
+            };
+            services.reportAuthState?.(state);
+            return state;
+          },
           async search(context, request) {
             return {
               items: [

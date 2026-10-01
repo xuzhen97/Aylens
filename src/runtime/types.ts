@@ -1,4 +1,5 @@
 import type { ProviderSearchResponse, SearchRequest } from "../contracts/search.js";
+import type { ProviderAuthState } from "../providers/types.js";
 
 export type RuntimeStatus = "online" | "degraded" | "draining" | "offline";
 
@@ -15,9 +16,11 @@ export interface RuntimeBrowserProfileState {
 export interface RuntimeCapabilities {
   providerTypes: string[];
   providerIds: string[];
+  authProviderIds?: string[];
   browsers: string[];
   profiles: string[];
   profileDetails?: RuntimeBrowserProfileState[];
+  providerStates?: Record<string, ProviderAuthState>;
   http: boolean;
   browserAutomation: boolean;
 }
@@ -45,13 +48,13 @@ export interface RuntimeExecutionRequest {
   executionId: string;
   providerId: string;
   providerType: string;
-  operation: "search";
-  input: SearchRequest;
+  operation: "search" | "auth_check" | "auth_login";
+  input: SearchRequest | Record<string, never>;
   requestId: string;
   traceId: string;
 }
 
-export interface RuntimeExecutionResult {
+export interface RuntimeExecutionResult<T = ProviderSearchResponse> {
   runtimeId: string;
-  output: ProviderSearchResponse;
+  output: T;
 }

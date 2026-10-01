@@ -14,9 +14,24 @@ export interface ProviderContext {
   signal?: AbortSignal | undefined;
 }
 
+export type ProviderAuthStatus = "unknown" | "authenticated" | "auth_required";
+
+export interface ProviderAuthAccount {
+  handle: string;
+  displayName?: string | undefined;
+}
+
+export interface ProviderAuthState {
+  status: ProviderAuthStatus;
+  account?: ProviderAuthAccount | undefined;
+  checkedAt: number;
+}
+
 export interface SearchProvider {
   readonly id: string;
   search(context: ProviderContext, request: SearchRequest): Promise<ProviderSearchResponse>;
+  checkAuth?(context: ProviderContext): Promise<ProviderAuthState>;
+  openLogin?(context: ProviderContext): Promise<ProviderAuthState>;
 }
 
 export interface ProviderFactoryContext {
@@ -24,10 +39,14 @@ export interface ProviderFactoryContext {
   browser?: BrowserHost | undefined;
   /** Runner 级默认浏览器 Profile；Provider 未显式指定时可复用同一持久化工作区。 */
   defaultBrowserProfile?: string | undefined;
+  /** Provider 可上报不含凭据的最近认证状态，供 Runner heartbeat / Admin UI 展示。 */
+  reportAuthState?: ((state: ProviderAuthState) => void) | undefined;
 }
 
 export interface ProviderFactory {
   readonly type: string;
+  /** 声明该 Provider type 是否支持通用的人工登录状态控制。 */
+  readonly authControl?: boolean | undefined;
   create(
     id: string,
     config: ProviderDeploymentConfig,

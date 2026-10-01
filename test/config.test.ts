@@ -86,6 +86,62 @@ describe("config", () => {
     expect(invalid.success).toBe(false);
   });
 
+  it("supports managed CDP Chrome with a Runner-local proxy transport", () => {
+    const managed = runnerConfigSchema.safeParse({
+      runner: {
+        id: "runner-1",
+        gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect",
+        token: "token",
+      },
+      browser: { defaultProfile: "browser-main" },
+      browserProfiles: {
+        "browser-main": {
+          mode: "cdp",
+          userDataDir: "./.profiles/browser-main",
+          cdpEndpoint: "http://127.0.0.1:9222",
+          autoStart: true,
+          interactive: true,
+        },
+      },
+    });
+    const cdpWithTransport = runnerConfigSchema.safeParse({
+      runner: {
+        id: "runner-1",
+        gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect",
+        token: "token",
+      },
+      transports: { proxy: { type: "http-proxy", url: "http://127.0.0.1:7890" } },
+      browserProfiles: {
+        "browser-main": {
+          mode: "cdp",
+          userDataDir: "./.profiles/browser-main",
+          cdpEndpoint: "http://127.0.0.1:9222",
+          autoStart: true,
+          transport: "proxy",
+        },
+      },
+    });
+    const remoteAutoStart = runnerConfigSchema.safeParse({
+      runner: {
+        id: "runner-1",
+        gatewayUrl: "ws://127.0.0.1:3000/v1/runners/connect",
+        token: "token",
+      },
+      browserProfiles: {
+        "browser-main": {
+          mode: "cdp",
+          userDataDir: "./.profiles/browser-main",
+          cdpEndpoint: "http://192.168.1.10:9222",
+          autoStart: true,
+        },
+      },
+    });
+
+    expect(managed.success).toBe(true);
+    expect(cdpWithTransport.success).toBe(true);
+    expect(remoteAutoStart.success).toBe(false);
+  });
+
   it("rejects routes that reference unknown providers", () => {
     const result = appConfigSchema.safeParse({
       version: 1,

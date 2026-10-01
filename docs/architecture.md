@@ -120,11 +120,16 @@ providers:
     type: generic-browser
     options:
       timeoutMs: 30000
+  x:
+    type: x-search
 
 browserProfiles:
   browser-main:
+    mode: cdp
     userDataDir: "./.profiles/browser-main"
-    headless: true
+    cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: true
+    interactive: true
 ```
 
 Gateway 使用 Provider ID 做路由和调度；Runner 根据同一个 Provider ID 找到本地 Deployment 并创建 Provider。
@@ -150,6 +155,13 @@ Provider 通过 `ProviderFactory` 在 Runner 注册。Runner 支持：
 - 提取 title 与正文文本；
 - 返回统一 `SearchDocument`。
 
+内置 `x-search`：
+
+- 复用 Runner 默认 Browser Profile；
+- 使用 X 原生查询打开 Latest 搜索结果；
+- 每条 Post 映射为一个 `SearchDocument`；
+- 支持 `checkAuth / openLogin`，由 Admin 展示最近账号和认证状态。
+
 ## 6. Browser Profile
 
 `Browser Profile` 表示 Runner 上的持久浏览器工作区，不等同于某个网站。
@@ -163,7 +175,7 @@ browser:
   defaultProfile: browser-main
 ```
 
-`generic-browser` 使用以下优先级：
+`generic-browser` 与 `x-search` 使用以下优先级：
 
 ```text
 provider.browser.profile
@@ -177,8 +189,10 @@ runner.browser.defaultProfile
 
 支持两种 Chrome 模式：
 
-- `launch`：Aylens 启动 persistent Chrome context；
-- `cdp`：连接外部 Chrome CDP endpoint。
+- `cdp`：默认模式。Runner 可用 `autoStart` 直接启动系统安装的普通 Chrome 进程，然后通过 CDP attach；也可以只连接用户已经启动的 Chrome；
+- `launch`：保留给隔离自动化场景，由 Playwright `launchPersistentContext()` 创建 BrowserContext。
+
+默认 `browser-main` 使用 `mode: cdp + autoStart: true`。Chrome 进程独立于 Playwright BrowserContext，Runner 重启后会优先重新 attach 已存在的 Chrome；Chrome 被关闭时，下一次 Profile 请求可以重新启动并继续使用同一 `userDataDir`。
 
 ## 7. Transport
 
@@ -188,7 +202,7 @@ Transport 只存在于 Runner，当前实现支持：
 - HTTP / HTTPS Proxy；
 - SOCKS5 / SOCKS5H。
 
-Browser Profile 可以引用 Runner-local Transport，`ChromeProfileHost` 会把对应代理映射到浏览器启动配置。
+Browser Profile 可以引用 Runner-local Transport。`mode: launch` 时映射到 Playwright 浏览器代理；`mode: cdp + autoStart: true` 时映射为普通 Chrome 进程的 `--proxy-server=...` 参数。CDP 已存在的 Chrome 会被直接复用，因此代理配置变更需要重启该 Chrome 进程才会生效。
 
 Proxy URL 和凭据不上传 Gateway。
 
@@ -199,6 +213,7 @@ Runner 通过注册和心跳向 Gateway 上报：
 - Runner ID、hostname、OS、version、labels；
 - Provider Types；
 - Provider IDs；
+- 支持认证控制的 Provider IDs 与最近认证状态；
 - Browser capability；
 - Profile IDs；
 - 安全的 `profileDetails`；
@@ -242,7 +257,7 @@ CANCEL
 PING
 ```
 
-`EXECUTE` 当前只支持 `operation = search`。任务携带 Provider ID / Type、Search input、requestId 和 traceId，不携带 Runner 本地 Provider 配置或秘密。
+`EXECUTE` 当前支持 `operation = search / auth_check / auth_login`。任务携带 Provider ID / Type、请求输入、requestId 和 traceId，不携带 Runner 本地 Provider 配置或秘密。
 
 ## 10. Search 执行流程
 
@@ -272,6 +287,8 @@ GET  /health
 GET  /ready
 POST /v1/search
 GET  /v1/providers
+POST /v1/providers/:providerId/auth/check
+POST /v1/providers/:providerId/auth/login
 GET  /v1/runtimes
 GET  /v1/audit/:requestId
 GET  /v1/admin/overview
@@ -300,7 +317,7 @@ Gateway 内置 Admin UI：
 /admin/tester
 ```
 
-Admin 只展示逻辑配置和 Runner 上报的安全状态，不返回 Runner Token、Proxy credential、userDataDir、CDP endpoint、Chrome executable path、Cookie 或 Provider options 原始内容。
+Admin 只展示逻辑配置和 Runner 上报的安全状态。支持认证控制的 Provider 可以展示最近账号、认证状态和检查时间，并触发登录页或状态检查；Admin 不返回 Runner Token、Proxy credential、userDataDir、CDP endpoint、Chrome executable path、Cookie、密码、站点 Token 或 Provider options 原始内容。
 
 ## 13. Audit 与状态存储
 
@@ -335,7 +352,8 @@ release/
 ├── runner/
 │   └── aylens-runner.mjs
 ├── providers/
-│   └── generic-browser.aylens-provider
+│   ├── generic-browser.aylens-provider
+│   └── x-search.aylens-provider
 ├── ecosystem.config.cjs
 └── pm2-start.*
 ```

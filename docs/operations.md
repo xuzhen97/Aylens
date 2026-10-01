@@ -153,14 +153,26 @@ pnpm smoke:generic-browser
 默认 Runner Profile 是 `browser-main`，目录在仓库内的 `./.profiles/browser-main`
 （`config/runner.yaml` 的 `browserProfiles.browser-main.userDataDir`），不要指向日常 Chrome Profile。
 
-默认是 `headless: true`，人工登录看不到窗口，需要先改成可见 + 交互模式：
+默认 `browser-main` 使用 managed CDP。第一次需要浏览器时，Runner 会启动系统安装的普通 Google Chrome，再 attach：
 
 ```yaml
-    headless: false
+    mode: cdp
+    cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: true
     interactive: true
 ```
 
-`keepPageOpen` 属于 Runner Provider Deployment，不属于 Gateway 配置。可在 `config/runner.yaml` 中临时设置：
+Chrome 默认从系统安装位置自动发现；找不到时设置 `CHROME_PATH`，或在 Profile 中配置 `executablePath`。不要把 `browser-main.userDataDir` 指向日常 Chrome Profile，也不要同时用另一个 Chrome 进程打开同一目录。
+
+CDP Profile 可以继续引用 Aylens `transport`。managed CDP 会把该 Transport 转成普通 Chrome 的 `--proxy-server=...` 启动参数；如果你的代理软件自己负责系统代理/TUN，也可以不配置 `transport`。
+
+如果你修改了 `transport` 或代理地址，必须先关闭当前 `browser-main` Chrome。Runner 发现 `127.0.0.1:9222` 已经存在时会复用旧进程，而 Chrome 的代理启动参数不能热切换。
+
+对于 `x-search`，直接在 Admin 的 Providers 页面点击 `登录 / 重新登录`；Runner 会使用同一个 `browser-main` 目录启动普通 Chrome 打开 `https://x.com/login`。这个登录 Chrome 不带 remote-debugging 参数，但会保留 Profile 配置的代理。
+
+完成密码、2FA 或验证码后，直接点击 `检查状态` 即可。Aylens 会先关闭自己启动的普通登录 Chrome，等待 Profile 释放，再用同一个 `browser-main` 启动 CDP Chrome 并临时 attach；不需要手工关闭浏览器。若普通登录 Chrome 无法在超时时间内退出，Runner 会明确返回浏览器切换失败，而不会继续抢占同一个 userDataDir。
+
+对于没有实现 Auth Control 的通用页面调试，`generic-browser` 仍可使用 `keepPageOpen`。它属于 Runner Provider Deployment，不属于 Gateway 配置，可在 `config/runner.yaml` 中临时设置：
 
 ```yaml
 providers:
@@ -173,9 +185,9 @@ providers:
 流程：
 
 1. 请求目标网站登录页；
-2. Runner 打开可见 Chrome；
+2. Runner 启动或复用普通 Chrome，并通过 CDP attach；
 3. 手工完成登录；
-4. 不关闭 Runner；
+4. Chrome 保持运行；Runner 重启后也可以重新 attach；
 5. 再请求登录后的页面；
 6. 验证返回内容包含 authenticated-only 内容；
 7. 登录稳定后把 keepPageOpen 改回 false。

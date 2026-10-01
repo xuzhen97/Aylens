@@ -21,10 +21,49 @@ export class ChromeProfileHost implements BrowserHost {
     callback: (session: BrowserSession) => Promise<T>,
   ): Promise<T> {
     const lease = this.profiles.acquire(profileId, jobId);
+    const profile = this.profiles.get(profileId);
+    let handle: BrowserDriverResult | undefined;
 
     try {
-      const handle = await this.ensureOpen(profileId);
+      handle = await this.ensureOpen(profileId);
       return await callback({ profileId, context: handle.context });
+    } finally {
+      // CDP 只在真实任务执行期间 attach；完成后立即断开 Playwright，Chrome 本身保持运行。
+      if (handle && profile.mode === "cdp") {
+        if (this.opened.get(profileId) === handle) this.opened.delete(profileId);
+        await handle.close().catch(() => undefined);
+      }
+      this.profiles.release(lease.id);
+    }
+  }
+
+  async openInteractive(profileId: string, jobId: string, url: string): Promise<void> {
+    const lease = this.profiles.acquire(profileId, jobId);
+    const profile = this.profiles.get(profileId);
+    const transport = profile.transport ? this.transports.getConfig(profile.transport) : undefined;
+
+    try {
+      if (this.driver.openInteractive && await this.driver.openInteractive(profile, url, transport)) return;
+
+      // 兼容未托管的 CDP / launch Profile：无法直接交给系统 Chrome 时才使用自动化 fallback。
+      const handle = await this.ensureOpen(profileId);
+      try {
+        const page = await handle.context.newPage();
+        await page.goto(url, { waitUntil: "domcontentloaded" });
+        await page.bringToFront().catch(() => undefined);
+      } finally {
+        if (profile.mode === "cdp") {
+          if (this.opened.get(profileId) === handle) this.opened.delete(profileId);
+          await handle.close().catch(() => undefined);
+        }
+      }
+    } catch (error) {
+      if (error instanceof RetrievalError) throw error;
+      throw new RetrievalError(
+        "BROWSER_START_FAILED",
+        `Failed to open interactive browser profile: ${profileId}`,
+        { retryable: true, cause: error },
+      );
     } finally {
       this.profiles.release(lease.id);
     }
@@ -36,11 +75,15 @@ export class ChromeProfileHost implements BrowserHost {
     this.opened.clear();
     this.opening.clear();
     await Promise.allSettled(handles.map((handle) => handle.close()));
+    await this.driver.close?.();
   }
 
   private async ensureOpen(profileId: string): Promise<BrowserDriverResult> {
     const existing = this.opened.get(profileId);
-    if (existing) return existing;
+    if (existing) {
+      if (!existing.isConnected || existing.isConnected()) return existing;
+      this.opened.delete(profileId);
+    }
 
     const inFlight = this.opening.get(profileId);
     if (inFlight) return inFlight;
@@ -48,7 +91,11 @@ export class ChromeProfileHost implements BrowserHost {
     const profile = this.profiles.get(profileId);
     const transport = profile.transport ? this.transports.getConfig(profile.transport) : undefined;
 
-    const opening = this.driver.open(profile, transport)
+    const opening = Promise.resolve()
+      .then(async () => {
+        await this.driver.prepareForAutomation?.(profile);
+        return this.driver.open(profile, transport);
+      })
       .then((handle) => {
         this.opened.set(profileId, handle);
         this.opening.delete(profileId);

@@ -44,6 +44,34 @@ export const runnerConfigSchema = z.object({
       });
     }
 
+    if (profile.mode === "cdp" && profile.autoStart && profile.cdpEndpoint) {
+      const endpoint = new URL(profile.cdpEndpoint);
+      const isLoopback = endpoint.hostname === "127.0.0.1" || endpoint.hostname === "localhost" || endpoint.hostname === "::1";
+      if (endpoint.protocol !== "http:" || !isLoopback) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["browserProfiles", profileId, "cdpEndpoint"],
+          message: "autoStart requires a local http:// CDP endpoint",
+        });
+      }
+    }
+
+    if (profile.mode === "cdp" && profile.maxConcurrency !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["browserProfiles", profileId, "maxConcurrency"],
+        message: "mode=cdp requires maxConcurrency=1 so Playwright can attach/detach per job safely",
+      });
+    }
+
+    if (profile.mode === "launch" && profile.autoStart) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["browserProfiles", profileId, "autoStart"],
+        message: "autoStart is only supported when mode=cdp",
+      });
+    }
+
     if (profile.transport && !(profile.transport in config.transports)) {
       ctx.addIssue({
         code: "custom",

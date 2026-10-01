@@ -57,6 +57,8 @@ export const browserProfileSchema = z.object({
   channel: z.string().min(1).default("chrome"),
   executablePath: z.string().min(1).optional(),
   cdpEndpoint: z.string().url().optional(),
+  /** mode=cdp 时可由 Runner 直接启动系统 Chrome 进程，再通过 CDP attach。 */
+  autoStart: z.boolean().default(false),
   args: z.array(z.string()).default([]),
   transport: z.string().min(1).optional(),
 });

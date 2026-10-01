@@ -59,6 +59,7 @@ plugins:
   baseDir: "."
   modules:
     - "builtin:generic-browser"
+    - "builtin:x-search"
     - "./providers/my-provider.aylens-provider"
     - "./external/my-provider/index.mjs"
     - "@my-company/aylens-provider-example"
@@ -183,6 +184,38 @@ Gateway 只用 Definition 做路由和调度；Runner 根据相同的 Provider I
 
 结果会归一化成统一 SearchDocument。
 
+## x-search
+
+仓库内置：
+
+```text
+src/providers/x-search/index.ts
+```
+
+Runner 通过 `builtin:x-search` 加载，也可以使用构建产物 `release/providers/x-search.aylens-provider`。默认 Provider instance 为 `x`，复用 Runner 的 `browser.defaultProfile`。
+
+检索请求中的 `query` 直接使用 X 原生搜索表达式，Provider 打开 X 的 Latest 搜索时间线并滚动提取 Post。每条 Post 单独返回一个 `SearchDocument`：
+
+```text
+platform = x
+type = post
+```
+
+结果包含 Post URL、正文、作者、发布时间和 X provider item id。
+
+`x-search` 同时实现通用 Provider Auth Control：
+
+```text
+checkAuth()
+openLogin()
+```
+
+Admin Providers 页面因此可以展示最近识别到的 X 账号与登录有效性，并提供 `登录 / 重新登录` 和 `检查状态`。
+
+首次登录时点击 `登录`，Runner 会使用同一个 `browser-main` 用户数据目录启动**完全普通的 Chrome** 打开 `https://x.com/login`：没有 `--remote-debugging-port`，也不建立 Playwright/CDP 自动化连接；如果 Profile 配了 Transport，仍会带上 Chrome 自己的 `--proxy-server=...`。密码、2FA、验证码全部由用户直接在真实 Chrome 页面完成。完成登录后直接点击 `检查状态`；Aylens 会自动关闭自己启动的登录 Chrome、等待 Profile 释放，再用同一 Profile 启动 CDP Chrome 并临时 attach。
+
+如果 X 将会话重定向到 `/login` 或 `/i/flow/login`，Provider 上报 `auth_required` 并让搜索返回 `PROFILE_AUTH_REQUIRED`。Runner heartbeat 只把最近账号显示信息、认证状态和检查时间上报 Gateway，不上传 Cookie、Token 或密码。
+
 ## 人工登录态
 
 登录型网站可在 Runner Provider Deployment 中临时设置：
@@ -198,7 +231,7 @@ providers:
 然后：
 
 1. 请求登录页；
-2. Runner 打开可见 persistent Chrome；
+2. Runner 启动或复用普通 Chrome，并通过 CDP attach；
 3. 手工登录；
 4. 再请求 authenticated page；
 5. 同一 BrowserContext 复用 Cookie / Local Storage；

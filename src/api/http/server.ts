@@ -83,6 +83,16 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
     })),
   }));
 
+  app.post<{ Params: { providerId: string } }>("/v1/providers/:providerId/auth/check", async (request) => {
+    const result = await context.dispatcher.auth(request.params.providerId, "check");
+    return { providerId: request.params.providerId, runtimeId: result.runtimeId, auth: result.output };
+  });
+
+  app.post<{ Params: { providerId: string } }>("/v1/providers/:providerId/auth/login", async (request) => {
+    const result = await context.dispatcher.auth(request.params.providerId, "login");
+    return { providerId: request.params.providerId, runtimeId: result.runtimeId, auth: result.output };
+  });
+
   // 节点列表只展示真实且已连接的 Runner；Gateway 不是可调度节点，也不会把自己注册成 Runtime。
   app.get("/v1/runtimes", async () => ({
     runtimes: context.runtimes.list(),

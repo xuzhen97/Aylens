@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { appConfigSchema } from "../src/config/schema.js";
 import { createGatewayContext } from "../src/app/context.js";
@@ -292,5 +292,81 @@ describe("admin UI", () => {
       apiToken: "***",
       region: "test",
     });
+  });
+
+  it("exposes only safe provider auth status and routes Admin auth actions through the dispatcher", async () => {
+    const config = appConfigSchema.parse({
+      version: 1,
+      auth: { apiKey: "api", runnerTokens: {} },
+      providers: { x: { type: "x-search" } },
+      routes: { default: { providers: [] } },
+    });
+    const context = createGatewayContext(config);
+    context.runtimes.upsert({
+      id: "x-runner",
+      hostname: "x-host",
+      os: "windows",
+      version: "1",
+      protocolVersion: "1",
+      status: "online",
+      labels: {},
+      capabilities: {
+        providerTypes: ["x-search"],
+        providerIds: ["x"],
+        authProviderIds: ["x"],
+        providerStates: {
+          x: {
+            status: "authenticated",
+            account: { handle: "@demo", displayName: "Demo User" },
+            checkedAt: 1_790_000_000_000,
+          },
+        },
+        browsers: ["chrome"],
+        profiles: ["browser-main"],
+        http: true,
+        browserAutomation: true,
+      },
+      capacity: { maxJobs: 1, activeJobs: 0 },
+      lastSeenAt: Date.now(),
+    });
+    const auth = vi.spyOn(context.dispatcher, "auth").mockResolvedValue({
+      runtimeId: "x-runner",
+      output: {
+        status: "auth_required",
+        account: { handle: "@demo", displayName: "Demo User" },
+        checkedAt: Date.now(),
+      },
+    });
+    app = buildHttpServer(context);
+
+    const overview = await app.inject({
+      method: "GET",
+      url: "/v1/admin/overview",
+      headers: { authorization: "Bearer api" },
+    });
+    expect(overview.json().providers[0]).toMatchObject({
+      id: "x",
+      authControl: true,
+      authRuntimeId: "x-runner",
+      auth: {
+        status: "authenticated",
+        account: { handle: "@demo", displayName: "Demo User" },
+      },
+    });
+    expect(overview.body).not.toContain("cookie");
+    expect(overview.body).not.toContain("token");
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/v1/providers/x/auth/login",
+      headers: { authorization: "Bearer api" },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(login.json()).toMatchObject({
+      providerId: "x",
+      runtimeId: "x-runner",
+      auth: { status: "auth_required", account: { handle: "@demo" } },
+    });
+    expect(auth).toHaveBeenCalledWith("x", "login");
   });
 });

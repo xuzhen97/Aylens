@@ -13,6 +13,7 @@ export interface BrowserProfileDefinition {
   channel?: string | undefined;
   executablePath?: string | undefined;
   cdpEndpoint?: string | undefined;
+  autoStart?: boolean | undefined;
   args: string[];
   transport?: string | undefined;
 }

@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+export const providerAuthStateSchema = z.object({
+  status: z.enum(["unknown", "authenticated", "auth_required"]),
+  account: z.object({
+    handle: z.string().min(1),
+    displayName: z.string().min(1).optional(),
+  }).optional(),
+  checkedAt: z.number().int().nonnegative(),
+});
+
 export const searchRequestSchema = z.object({
   query: z.string().min(1),
   route: z.string().min(1).optional(),

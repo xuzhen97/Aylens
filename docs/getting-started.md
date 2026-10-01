@@ -67,7 +67,8 @@ release/
 │   ├── pm2-start.*
 │   └── config/runner.yaml
 └── providers/
-    └── generic-browser.aylens-provider
+    ├── generic-browser.aylens-provider
+    └── x-search.aylens-provider
 ```
 
 在源码仓库里可直接运行：
@@ -127,7 +128,7 @@ dev-key
 
 如果使用自定义配置且默认 route 没有任何 Provider，`/v1/search` 会成功返回空结果。
 本仓库的默认配置已经把 generic-browser 验证 Provider 接进 `routes.default`，
-所以请同时启动 Runner，否则 /v1/search 会报找不到可用 Runtime。
+并把 X Provider 接进独立的 `routes.x`。请同时启动 Runner，否则 /v1/search 会报找不到可用 Runtime。
 
 ## generic-browser 快速验证
 
@@ -137,8 +138,10 @@ dev-key
 src/providers/generic-browser/index.ts                 官方 Provider 源码
 release/providers/generic-browser.aylens-provider    独立 Provider 分发包
 config/aylens.yaml                                  providers.generic-browser + routes.default
-config/runner.yaml                                  plugins.modules + browser-main Profile
+config/runner.yaml                                  generic-browser + x-search + browser-main Profile
 ```
+
+X Provider 同样已在默认配置接好：`src/providers/x-search/index.ts` / `release/providers/x-search.aylens-provider` / Provider ID `x`。首次使用可在 `/admin/providers` 点击 `登录`，在 Runner 的可见 `browser-main` Chrome 中完成 X 登录，再点击 `检查状态`。
 
 所以一条命令即可（会自动拉起 Gateway 和 Runner）：
 

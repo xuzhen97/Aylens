@@ -115,8 +115,13 @@ offline
 - Provider type
 - enabled / disabled
 - Runtime 选择策略
+- 支持认证控制的 Provider：最近账号、登录状态、最后检查时间
+- `登录 / 重新登录`
+- `检查状态`
 
 Gateway Provider Definition 不包含 Runner-local Browser Profile、Transport 或 Provider options，因此 Providers 页面也不会展示这些本地执行配置。
+
+当前 `x-search` 使用这套通用认证控制。账号和有效性来自 Runner 最近一次真实检查或 X 搜索；页面不会后台定时访问 X 做保活。点击 `登录 / 重新登录` 时，Runner 会在同一个 persistent `browser-main` 中打开 `https://x.com/login`，用户直接在真实 Chrome 中完成密码、2FA 或验证码。
 
 ## Browser Profiles 页面
 
@@ -226,6 +231,8 @@ Admin UI
 - Chrome executable path
 - CDP endpoint
 - Provider options 原始内容
+- Cookie / Local Storage
+- 登录密码、2FA、站点 Token
 
 selector labels 中类似以下敏感字段名也会被脱敏：
 

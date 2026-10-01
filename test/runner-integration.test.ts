@@ -239,6 +239,26 @@ describe("Gateway/Runner integration", () => {
     expect(result.items[0]?.title).toBe("plugin-query");
     expect(result.items[0]?.provenance.runtimeId).toBe("plugin-runner");
     expect(result.meta.providers.remoteFixture?.runtimeId).toBe("plugin-runner");
+
+    expect(context.runtimes.get("plugin-runner")?.capabilities.authProviderIds)
+      .toContain("remoteFixture");
+
+    const checked = await context.dispatcher.auth("remoteFixture", "check");
+    expect(checked).toMatchObject({
+      runtimeId: "plugin-runner",
+      output: {
+        status: "authenticated",
+        account: { handle: "@fixture", displayName: "Fixture User" },
+      },
+    });
+    expect(context.runtimes.get("plugin-runner")?.capabilities.providerStates?.remoteFixture)
+      .toMatchObject({ status: "authenticated", account: { handle: "@fixture" } });
+
+    const login = await context.dispatcher.auth("remoteFixture", "login");
+    expect(login.output).toMatchObject({ status: "auth_required" });
+    // Runner 保留上一次识别到的账号，Admin 可以显示“哪个账号已失效”。
+    expect(context.runtimes.get("plugin-runner")?.capabilities.providerStates?.remoteFixture)
+      .toMatchObject({ status: "auth_required", account: { handle: "@fixture" } });
   });
 
   it("rejects a second Runner claiming an id that is already connected", async () => {

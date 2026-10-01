@@ -6,6 +6,7 @@ runner:
 plugins:
   modules:
     - "builtin:generic-browser"
+    - "builtin:x-search"
 
 browser:
   # 多个浏览器 Provider 默认共用这个持久化 Profile，统一保存各站点登录状态。
@@ -14,8 +15,19 @@ browser:
 providers:
   generic-browser:
     type: generic-browser
+  x:
+    type: x-search
+
+transports:
+  proxy-main:
+    type: http-proxy
+    url: "http://127.0.0.1:10808"
 
 browserProfiles:
   browser-main:
+    mode: cdp
     userDataDir: "./.profiles/browser-main"
-    headless: true
+    cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: true
+    interactive: true
+    transport: proxy-main

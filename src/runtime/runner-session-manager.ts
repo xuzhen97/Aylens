@@ -1,18 +1,19 @@
 import type WebSocket from "ws";
 import { isRetrievalErrorCode, RetrievalError } from "../core/errors.js";
 import { createId } from "../shared/ids.js";
-import { providerSearchResponseSchema } from "../contracts/validation.js";
+import { providerAuthStateSchema, providerSearchResponseSchema } from "../contracts/validation.js";
 import type { RuntimeExecutionRequest, RuntimeExecutionResult } from "./types.js";
 import type { RunnerToGatewayMessage } from "./protocol.js";
 
 interface PendingJob {
-  resolve: (value: RuntimeExecutionResult) => void;
+  resolve: (value: RuntimeExecutionResult<unknown>) => void;
   reject: (reason: unknown) => void;
   timer?: NodeJS.Timeout | undefined;
   runtimeId: string;
   /** 镜像 Runner 侧任务生命周期，使超时错误能够说明任务实际执行到了哪个阶段。 */
   accepted: boolean;
   started: boolean;
+  operation: RuntimeExecutionRequest["operation"];
 }
 
 function jobPhase(job: PendingJob): "queued" | "accepted" | "started" {
@@ -106,7 +107,9 @@ export class RunnerSessionManager {
       return;
     }
 
-    const output = providerSearchResponseSchema.safeParse(message.output);
+    const output = pending.operation === "search"
+      ? providerSearchResponseSchema.safeParse(message.output)
+      : providerAuthStateSchema.safeParse(message.output);
     if (!output.success) {
       pending.reject(
         new RetrievalError("PROVIDER_UNAVAILABLE", "Runner returned an invalid provider response", {
@@ -135,7 +138,7 @@ export class RunnerSessionManager {
     }));
   }
 
-  execute(runtimeId: string, request: RuntimeExecutionRequest): Promise<RuntimeExecutionResult> {
+  execute<T>(runtimeId: string, request: RuntimeExecutionRequest): Promise<RuntimeExecutionResult<T>> {
     const socket = this.sockets.get(runtimeId);
     if (!socket || socket.readyState !== socket.OPEN) {
       throw new RetrievalError("RUNTIME_OFFLINE", `Runtime is not connected: ${runtimeId}`, { retryable: true });
@@ -143,11 +146,12 @@ export class RunnerSessionManager {
 
     return new Promise((resolve, reject) => {
       const pending: PendingJob = {
-        resolve,
+        resolve: (value) => resolve(value as RuntimeExecutionResult<T>),
         reject,
         runtimeId,
         accepted: false,
         started: false,
+        operation: request.operation,
       };
 
       pending.timer = setTimeout(() => {

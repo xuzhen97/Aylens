@@ -10,6 +10,8 @@ GET  /ready
 
 POST /v1/search
 GET  /v1/providers
+POST /v1/providers/:providerId/auth/check
+POST /v1/providers/:providerId/auth/login
 GET  /v1/runtimes
 GET  /v1/audit/:requestId
 GET  /v1/admin/overview
@@ -95,6 +97,15 @@ GET /v1/runtimes
 ```
 
 用于查看 Gateway 当前 Provider definition 与 Runtime Registry。
+
+支持人工网页登录的 Provider 还提供：
+
+```text
+POST /v1/providers/:providerId/auth/check
+POST /v1/providers/:providerId/auth/login
+```
+
+`auth/check` 在目标 Runner 的 Browser Profile 中检查最近登录状态；`auth/login` 打开 Provider 的真实登录页。响应只包含 `authenticated / auth_required / unknown`、账号显示信息、检查时间和 Runtime ID，不返回 Cookie、Token、密码或 Profile 本地路径。
 
 ## Audit
 

@@ -19,6 +19,7 @@ export interface GatewayContext {
   providers: ProviderRegistry;
   runtimes: RuntimeRegistry;
   runnerSessions: RunnerSessionManager;
+  dispatcher: ExecutionDispatcher;
   audit: InMemoryAuditService;
   search: SearchService;
 }
@@ -36,5 +37,5 @@ export function createGatewayContext(config: AppConfig): GatewayContext {
   const router = new ProviderRouter(config);
   const search = new SearchService(router, dispatcher, audit);
 
-  return { config, providers, runtimes, runnerSessions, audit, search };
+  return { config, providers, runtimes, runnerSessions, dispatcher, audit, search };
 }

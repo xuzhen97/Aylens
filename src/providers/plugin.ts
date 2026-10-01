@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { strFromU8, unzipSync } from "fflate";
 import type { ProviderFactory } from "./types.js";
 import genericBrowserPlugin from "./generic-browser/index.js";
+import xSearchPlugin from "./x-search/index.js";
 
 export interface ProviderPlugin {
   name: string;
@@ -29,6 +30,7 @@ interface ProviderPackageManifest {
 
 const BUILTIN_PLUGINS = new Map<string, ProviderPlugin>([
   ["builtin:generic-browser", genericBrowserPlugin],
+  ["builtin:x-search", xSearchPlugin],
 ]);
 
 function resolveFileReference(moduleRef: string, baseDir: string): string {

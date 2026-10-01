@@ -8,6 +8,7 @@ import { HttpProxyTransportFactory } from "../transports/http-proxy.js";
 import { Socks5TransportFactory } from "../transports/socks5.js";
 import { TransportRegistry } from "../transports/registry.js";
 import type { RunnerConfig } from "./config.js";
+import type { ProviderAuthState } from "../providers/types.js";
 
 export interface RunnerRuntime {
   providers: ProviderRegistry;
@@ -16,6 +17,8 @@ export interface RunnerRuntime {
   profiles: BrowserProfileManager;
   browser: BrowserHost;
   pluginTypes: string[];
+  providerAuthStates: Map<string, ProviderAuthState>;
+  reportProviderAuthState(providerId: string, state: ProviderAuthState): void;
   close(): Promise<void>;
 }
 
@@ -39,6 +42,19 @@ export async function createRunnerRuntime(config: RunnerConfig): Promise<RunnerR
 
   const providers = new ProviderRegistry();
   for (const factory of loaded.factories) providers.registerFactory(factory);
+  const providerAuthStates = new Map<string, ProviderAuthState>();
+
+  const reportProviderAuthState = (providerId: string, state: ProviderAuthState) => {
+    const previous = providerAuthStates.get(providerId);
+    providerAuthStates.set(providerId, {
+      ...state,
+      ...(state.account
+        ? { account: state.account }
+        : previous?.account
+          ? { account: previous.account }
+          : {}),
+    });
+  };
 
   return {
     providers,
@@ -47,6 +63,8 @@ export async function createRunnerRuntime(config: RunnerConfig): Promise<RunnerR
     profiles,
     browser,
     pluginTypes: providers.factoryTypes(),
+    providerAuthStates,
+    reportProviderAuthState,
     close: async () => browser.close(),
   };
 }

@@ -151,6 +151,8 @@ describe("generic-browser Gateway/Runner flow", () => {
       profiles,
       browser,
       pluginTypes: providers.factoryTypes(),
+      providerAuthStates: new Map(),
+      reportProviderAuthState: () => undefined,
       close: async () => browser.close(),
     };
 

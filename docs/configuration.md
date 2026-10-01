@@ -63,6 +63,7 @@ runner:
 plugins:
   modules:
     - "builtin:generic-browser"
+    - "builtin:x-search"
     # 外部扩展推荐：- "./providers/example.aylens-provider"
 
 browser:
@@ -72,16 +73,23 @@ browser:
 providers:
   generic-browser:
     type: generic-browser
+  x:
+    type: x-search
 
 browserProfiles:
   browser-main:
+    mode: cdp
     userDataDir: "./.profiles/browser-main"
-    headless: true
+    cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: true
+    interactive: true
 ```
 
 Runner 不再要求手工填写 `capabilities`。Provider Type 来自实际加载成功的 Plugin，Provider ID 来自本机 Deployment，Browser/Profile 能力来自实际 Browser Profile。Direct Transport、Plugin `baseDir`、心跳和并发数都有默认值。
 
-`browser.defaultProfile` 是 Runner 级共享浏览器工作区。Runner 会把它作为 `services.defaultBrowserProfile` 注入 ProviderFactory；`generic-browser` 已支持在未配置 `provider.browser.profile` 时使用该默认值。其他 Browser Provider 也应采用 `config.browser?.profile ?? services.defaultBrowserProfile` 的逻辑。需要隔离账号或代理时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
+`browser.defaultProfile` 是 Runner 级共享浏览器工作区。Runner 会把它作为 `services.defaultBrowserProfile` 注入 ProviderFactory；`generic-browser` 和 `x-search` 都在未配置 `provider.browser.profile` 时使用该默认值。其他 Browser Provider 也应采用 `config.browser?.profile ?? services.defaultBrowserProfile` 的逻辑。需要隔离账号时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
+
+默认 Profile 使用 managed CDP：Runner 不再通过 Playwright `launchPersistentContext()` 创建浏览器，而是直接启动系统安装的 Google Chrome 进程，再通过 `connectOverCDP()` attach。人工登录发生在普通 Chrome 窗口中；平时检索仍由 Provider 自动操作任务页面。
 
 ## Runtime 选择
 
@@ -177,46 +185,65 @@ socks5h://
 
 ## Browser Profile（Runner 配置）
 
-Persistent Chrome：
+默认：普通 Chrome + managed CDP：
 
 ```yaml
 browserProfiles:
   browser-main:
     browser: chrome
-    mode: launch
+    mode: cdp
     persistent: true
     userDataDir: "D:\\Aylens\\profiles\\browser-main"
-    channel: chrome
-    headless: false
+    cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: true
     interactive: true
     maxConcurrency: 1
     args: []
 ```
 
-CDP：
+`autoStart: true` 时，Runner 会先检查 `cdpEndpoint`。如果已有 Chrome 在监听就直接复用；否则从系统安装位置寻找 Google Chrome，以普通 OS 进程启动并带上独立 `userDataDir` 和 remote-debugging 参数。也可以通过 `CHROME_PATH` 或 `executablePath` 显式指定 Chrome。
+
+只连接已有 Chrome：
 
 ```yaml
 browserProfiles:
   chrome-external:
     browser: chrome
     mode: cdp
+    userDataDir: "D:\\Aylens\\profiles\\browser-main"
     cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: false
     maxConcurrency: 1
     interactive: true
 ```
 
-如果 Profile 指定 Transport：
+旧的 Playwright launch 模式仍保留，适合无需人工站点登录的隔离抓取：
+
+```yaml
+browserProfiles:
+  automation-only:
+    browser: chrome
+    mode: launch
+    userDataDir: "D:\\Aylens\\profiles\\automation-only"
+    headless: true
+```
+
+Browser Profile 可以指定 Runner-local Transport：
 
 ```yaml
 browserProfiles:
   account-main:
     browser: chrome
-    mode: launch
+    mode: cdp
     userDataDir: "D:\\Aylens\\profiles\\account-main"
+    cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: true
     transport: proxy-cn
 ```
 
-BrowserHost 会把 Runtime-local Transport 映射为浏览器代理配置。
+`mode: launch` 时，BrowserHost 会把 Runtime-local Transport 映射为 Playwright 的浏览器代理配置；`mode: cdp + autoStart: true` 时，Runner 会把同一个 Transport 映射成普通 Chrome 的 `--proxy-server=...` 启动参数。
+
+注意：CDP 模式的代理是在 **Chrome 进程启动时**确定的。修改 `transport` 后，如果 `cdpEndpoint` 上已经有旧 Chrome 在运行，Runner 会复用旧进程，新的代理参数不会动态生效。此时必须先彻底关闭该 `browser-main` Chrome，再重新触发登录/检查/搜索，让 Runner 用新配置重新启动。
 
 不要让多台机器同时写同一个 Chrome User Data 目录。
 

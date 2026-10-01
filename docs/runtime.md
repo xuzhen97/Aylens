@@ -168,6 +168,7 @@ plugins:
   baseDir: "."
   modules:
     - "builtin:generic-browser"
+    - "builtin:x-search"
     # 也可以加载 ./providers/example.aylens-provider、外部 ESM 路径或 npm package
 
 browser:
@@ -176,20 +177,25 @@ browser:
 providers:
   generic-browser:
     type: generic-browser
+  x:
+    type: x-search
 
 browserProfiles:
   browser-main:
     browser: chrome
-    mode: launch
+    mode: cdp
     persistent: true
     userDataDir: "D:\\Aylens\\profiles\\browser-main"
-    channel: chrome
-    headless: false
+    cdpEndpoint: "http://127.0.0.1:9222"
+    autoStart: true
     interactive: true
     maxConcurrency: 1
+    transport: proxy-main
     args: []
 ```
 
+默认 `browser-main` 是普通 Chrome 进程。`autoStart: true` 负责保证该进程和本地 CDP endpoint 存在；如果 Profile 指定 `transport`，Runner 会在启动 Chrome 时加入对应的 `--proxy-server=...`。页面控制仍由 BrowserHost attach 后完成。Runner 关闭时不会主动关闭这个 Chrome，因此 Runner/PM2 重启不会丢失当前浏览器进程和登录状态；但代理变更需要重启 Chrome 本身。
+
 Runner capability 来自实际加载成功的 Plugin、Provider Deployment 与 Browser Profile，不需要在 YAML 中重复声明。
 
-Runner 会随注册和心跳上报 Browser Profile 的安全运行状态（browser、mode、Lease、maxConcurrency、interactive、transport），供 Gateway Admin UI 展示；`userDataDir`、CDP endpoint、Chrome 可执行路径、Cookie、Local Storage 与凭据不会上报。
+Runner 会随注册和心跳上报 Browser Profile 的安全运行状态（browser、mode、Lease、maxConcurrency、interactive、transport）。支持认证控制的 Provider 还会上报最近的 `authenticated / auth_required / unknown`、账号显示信息与检查时间，供 Gateway Admin UI 展示；`userDataDir`、CDP endpoint、Chrome 可执行路径、Cookie、Local Storage、密码与站点 Token 不会上报。

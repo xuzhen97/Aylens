@@ -43,6 +43,10 @@ export class ProviderRegistry {
     return factory.create(id, config, context);
   }
 
+  supportsAuth(type: string): boolean {
+    return this.factories.get(type)?.authControl === true;
+  }
+
   factoryTypes(): string[] {
     return [...this.factories.keys()];
   }
