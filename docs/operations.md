@@ -18,15 +18,13 @@ Gateway
 pnpm install
 pnpm typecheck
 pnpm test
+pnpm test:admin
+pnpm typecheck:admin
+pnpm test:release
 pnpm build
 ```
 
-当前测试基线：
-
-```text
-13 个测试文件
-50 个测试
-```
+根 Node 测试：18 个文件 / 79 项；Admin jsdom 测试：8 个文件 / 15 项；单独 Release smoke：2 项（以当前命令为准）。
 
 ## 2. 启动 Gateway 与 Runner（推荐）
 
@@ -87,13 +85,6 @@ $env:AYLENS_RUNNER_CONFIG="./config/runner.local.yaml"
 
 两边要成对改：Gateway 的 `providers.*.runtime.selector` 必须能匹配上 Runner 上报的能力
 （providerType / browser / profile），否则请求会以 `NO_COMPATIBLE_RUNTIME` 失败。
-
-Runner 注册后应上报：
-
-- Provider type：generic-browser
-- Browser：chrome
-- Profile：browser-main
-- browser automation capability
 
 ## 4. 验证 Runner 注册
 

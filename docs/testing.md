@@ -1,23 +1,19 @@
 # 测试与验证
 
-## 常用命令
-
-全部测试：
-
 ```bash
 pnpm test
-```
-
-TypeScript：
-
-```bash
 pnpm typecheck
-```
-
-Production build：
-
-```bash
 pnpm build
+
+# 独立 Admin workspace
+pnpm dev:admin
+pnpm build:admin
+pnpm test:admin
+pnpm typecheck:admin
+
+# 发布 Gateway Admin bundle（另含端到端源码外安装测试）
+pnpm build:gateway
+pnpm test:release
 ```
 
 真实 Chrome smoke：
@@ -32,13 +28,7 @@ Git whitespace 检查：
 git diff --check
 ```
 
-## 当前基线
-
-```text
-13 个测试文件
-50 个测试
-全部通过
-```
+自动化测试按根 Node/Vitest、Admin jsdom/Vitest 和独立 Release smoke 三层分别运行。Release smoke 会构建 Gateway、将产物复制到临时目录、安装生产依赖并启动 Gateway，需可访问依赖包注册表。Playwright 浏览器验收需 Gateway / Vite 开发服务可访问。
 
 Vitest 默认不会启动真实 Google Chrome。浏览器相关单元/组件测试使用 fake BrowserHost、fake BrowserDriver 或 fake Playwright Page。
 
@@ -50,29 +40,13 @@ pnpm smoke:generic-browser
 
 ## 测试矩阵
 
-| 测试文件 | 测试数 | 主要内容 |
-| --- | ---: | --- |
-| test/config.test.ts | 9 | 环境变量插值、Gateway 默认段、Route / Provider 配置校验、Runner placement、共享默认 Browser Profile 校验 |
-| test/runtime-registry.test.ts | 2 | Runtime capability 匹配与低负载选择、无匹配时报错 |
-| test/profile-manager.test.ts | 1 | Profile Lease、并发限制、释放 |
-| test/search-service.test.ts | 4 | 空 route、经已连接 Runner 执行、Audit |
-| test/plugin-loader.test.ts | 2 | Runner Provider Plugin 动态加载、`.aylens-provider` 包加载 |
-| test/transports.test.ts | 3 | HTTP Proxy、SOCKS5、错误标准化 |
-| test/browser-host.test.ts | 2 | BrowserHost 复用、Lease、Runtime-local proxy |
-| test/runner-session-manager.test.ts | 4 | Runner 结构化错误跨协议保真 |
-| test/runner-reconnect.test.ts | 3 | Runner 重连与同一 id 接管 |
-| test/generic-browser-provider.test.ts | 6 | URL 校验、正文提取、截断、keepPageOpen、取消信号、Runner 默认 Profile |
-| test/generic-browser-integration.test.ts | 1 | Gateway/Runner WebSocket + generic-browser 结果 |
-| test/runner-integration.test.ts | 4 | Runner 注册、capability、动态 Plugin |
-| test/admin-ui.test.ts | 9 | Admin 多页面、主题、JS、鉴权、脱敏、Runner Profile 状态 |
-
-总数：
-
-```text
-9 + 2 + 1 + 4 + 2 + 3 + 2 + 4 + 3 + 6 + 1 + 4 + 9 = 50
-```
-
-## 各层测试关注点
+| 测试文件 | 覆盖内容 |
+| --- | --- |
+| `test/admin-session.test.ts`、`test/admin-auth.test.ts`、`test/admin-config-security.test.ts` | 管理会话生命周期、HTTP 白名单、CSRF、Origin、代理配置 |
+| `test/admin-static.test.ts`、`test/admin-ui.test.ts` | Gateway SPA/资产托管、CSP、安全头、overview 脱敏与 Bearer 兼容 |
+| 根 Node 测试目前 18 个测试文件，79 项通过；以本地命令为准 |
+| `test/admin-release.test.ts`（`pnpm test:release`） | Gateway 发布内容、外置安装与实际 HTTP 冒烟测试 |
+| `apps/admin/src/**/*.test.tsx`（`pnpm test:admin`） | React 页面、会话/主题 Hook、API client 与 XSS-safe 搜索结果 |
 
 配置：
 

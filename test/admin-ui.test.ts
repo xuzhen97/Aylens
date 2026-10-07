@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { appConfigSchema } from "../src/config/schema.js";
 import { createGatewayContext } from "../src/app/context.js";
 import { buildHttpServer } from "../src/api/http/server.js";
-import { ADMIN_HTML, renderAdminPage } from "../src/api/http/admin-page.js";
+
 
 let app: FastifyInstance | undefined;
 
@@ -85,97 +87,43 @@ function createAdminServer() {
   });
   context.audit.finish("request-admin-test", "completed");
 
-  app = buildHttpServer(context);
+  app = buildHttpServer(context, {
+    logger: false,
+    adminStaticRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../apps/admin/dist"),
+  });
   return { app, context };
 }
 
 describe("admin UI", () => {
   it("serves the admin shell without embedding credentials", async () => {
     const { app } = createAdminServer();
-
-    const response = await app.inject({
-      method: "GET",
-      url: "/admin",
-    });
-
+    const response = await app.inject({ method: "GET", url: "/admin" });
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-type"]).toContain("text/html");
     expect(response.headers["cache-control"]).toBe("no-store");
-    expect(response.body).toContain("Aylens 控制台");
-    expect(response.body).toContain("基础设施运行总览");
+    expect(response.body).toContain("<div id=\"root\"></div>");
     expect(response.body).not.toContain("admin-api-key-do-not-expose");
     expect(response.body).not.toContain("runner-token-do-not-expose");
   });
 
-  it("contains syntactically valid inline JavaScript on every admin page", () => {
-    for (const page of ["overview", "runtimes", "providers", "profiles", "audits", "tester"] as const) {
-      const html = renderAdminPage(page);
-      const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-        .map((match) => match[1] ?? "");
-
-      expect(scripts).toHaveLength(2);
-      for (const script of scripts) {
-        expect(() => new Function(script)).not.toThrow();
-      }
-    }
-  });
-
-  it("serves separate admin routes instead of stacking every module on one page", async () => {
+  it("serves the external React bundle for all supported deep links", async () => {
     const { app } = createAdminServer();
-    const pages = [
-      ["/admin", "overview", "id=\"runtimeSummary\""],
-      ["/admin/runtimes", "runtimes", "id=\"runtimeRows\""],
-      ["/admin/providers", "providers", "id=\"providerGrid\""],
-      ["/admin/profiles", "profiles", "id=\"profileGrid\""],
-      ["/admin/audits", "audits", "id=\"auditRows\""],
-      ["/admin/tester", "tester", "id=\"searchForm\""],
-    ] as const;
-
-    for (const [url, page, marker] of pages) {
+    for (const url of ["/admin", "/admin/", "/admin/login", "/admin/runtimes", "/admin/providers", "/admin/profiles", "/admin/audits", "/admin/tester"]) {
       const response = await app.inject({ method: "GET", url });
       expect(response.statusCode).toBe(200);
-      expect(response.body).toContain(`data-page="${page}"`);
-      expect(response.body).toContain(marker);
-      expect(response.body).toContain(`class="active" href="${url}"`);
+      expect(response.headers["content-security-policy"]).toContain("script-src 'self'");
+      expect(response.headers["content-security-policy"]).not.toContain("unsafe-inline");
+      expect(response.body).toContain("/admin/assets/");
     }
-
-    const providers = await app.inject({ method: "GET", url: "/admin/providers" });
-    expect(providers.body).not.toContain('id="runtimeRows"');
-    expect(providers.body).not.toContain('id="auditRows"');
-    expect(providers.body).not.toContain('id="searchForm"');
-
-    const tester = await app.inject({ method: "GET", url: "/admin/tester" });
-    expect(tester.body).not.toContain('id="providerGrid"');
-    expect(tester.body).not.toContain('id="runtimeRows"');
+    expect((await app.inject("/admin/unknown")).statusCode).toBe(404);
+    expect((await app.inject("/admin/assets/missing.js")).statusCode).toBe(404);
   });
 
-  it("renders provider execution diagnostics on the request tester", () => {
-    const tester = renderAdminPage("tester");
-
-    expect(tester).toContain("appendProviderFailures");
-    expect(tester).toContain("Gateway 返回的实际 Provider 错误");
-    expect(tester).toContain("error.code");
-    expect(tester).toContain("meta.runtimeId");
-    expect(tester).toContain("error.retryable");
-    expect(tester).toContain("meta.latencyMs");
-  });
-
-  it("keeps the request tester provider selection across auto-refreshes", () => {
-    const tester = renderAdminPage("tester");
-    // 回归测试：自动刷新不能重建 Provider 选项并清空用户选择；选项不变时必须恢复原值。
-    expect(tester).toMatch(/s\.dataset\.keys/);
-    expect(tester).toMatch(/Array\.from\(s\.options\)\.some/);
-  });
-
-  it("supports system, light, and dark themes with a persistent theme preference", () => {
-    expect(ADMIN_HTML).toContain('value="system"');
-    expect(ADMIN_HTML).toContain('value="light"');
-    expect(ADMIN_HTML).toContain('value="dark"');
-    expect(ADMIN_HTML).toContain("aylens.admin.theme");
-    expect(ADMIN_HTML).toContain('html[data-theme="light"]');
-    expect(ADMIN_HTML).toContain("prefers-color-scheme: dark");
-    expect(ADMIN_HTML).toContain("localStorage.setItem(THEME");
-    expect(ADMIN_HTML).toContain("sessionStorage.getItem(KEY)");
+  it("does not embed API keys in the external SPA shell", async () => {
+    const { app } = createAdminServer();
+    const response = await app.inject("/admin/tester");
+    expect(response.body).not.toContain("sessionStorage");
+    expect(response.body).not.toContain("admin-api-key-do-not-expose");
   });
 
   it("protects admin data with the existing Gateway API key", async () => {
@@ -337,7 +285,10 @@ describe("admin UI", () => {
         checkedAt: Date.now(),
       },
     });
-    app = buildHttpServer(context);
+    app = buildHttpServer(context, {
+      logger: false,
+      adminStaticRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../apps/admin/dist"),
+    });
 
     const overview = await app.inject({
       method: "GET",

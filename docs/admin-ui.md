@@ -1,12 +1,16 @@
-# Admin UI
-
-Aylens Gateway 内置轻量后台，不需要单独前端项目。
+Admin 迁移完成（2026-10-07）：React/Vite 前端位于 `apps/admin/`，由 Gateway 同源托管；认证使用既有 API Key 换取 2 小时绝对有效内存会话，生产要求 HTTPS 并显式信任代理。根、前端类型检查与测试、Gateway/Runner/Provider 构建、源码外 Release smoke 均通过。Playwright 图形验收未完成：本地开发服务无法从浏览器工具连接。
 
 入口：
 
 ```text
 http://127.0.0.1:3000/admin
 ```
+
+Gateway 同源开发入口由 Vite 提供 `/admin/`。生产环境的 Gateway 不需要前端开发服务器。
+
+Vite 默认代理 `/v1` 到 `http://127.0.0.1:3000`。开发 Gateway 时将 `server.publicOrigin` 显式设置为 `http://127.0.0.1:5173`（或当前 Vite Origin），然后设置 `AYLENS_CONFIG` 指向该本地配置。不要通过放宽 Origin/CSRF 校验来修复代理配置。
+
+前端开发与验证命令：`pnpm dev:admin`、`pnpm --filter @aylens/admin typecheck`、`pnpm test:admin`、`pnpm build:admin`。Gateway 发布构建 `pnpm build:gateway` 会先构建前端并将产物复制到 `release/gateway/admin/`。
 
 ## 页面
 
@@ -34,29 +38,23 @@ http://127.0.0.1:3000/admin
 
 详细内容分别在自己的页面，不再全部堆叠在一个长页面。
 
-## API Key
-
-页面 HTML 可以直接打开，但管理数据仍由 Gateway API Key 保护。
-
-API Key 只保存在：
+Gateway:
 
 ```text
-sessionStorage["aylens.admin.apiKey"]
+http://127.0.0.1:3000/admin
 ```
 
-请求通过：
+Admin is an independent React/Vite workspace at `apps/admin/`, served by Gateway in production at the same origin. The existing Gateway API Key exchanges for a 2-hour in-memory admin session; it is not stored in browser Web Storage.
 
-```http
-Authorization: Bearer <API_KEY>
-```
+## API Key 与管理会话
 
-API Key 不会：
+登录页面使用现有 Gateway API Key，不建立独立管理员密钥或账号。原始 Key 仅通过登录请求提交，不写入 localStorage、sessionStorage、URL 或普通业务请求；服务端换发 2 小时绝对有效期的内存会话，浏览器持有 HttpOnly、SameSite=Strict、Path=/v1 Cookie。
 
-- 写入 URL
-- 写入页面 HTML
-- 写入后端状态
-- 写入 localStorage
-- 从 Admin API 响应返回
+管理会话在 Gateway 重启、API Key 变化、退出或绝对过期后失效。当前会话仅单实例内存保存；多 Gateway 实例需要 sticky session 也不能共享会话，应保持单实例部署。
+
+Cookie 会话仅能访问管理 overview、搜索和 Provider 登录/状态检查的明确白名单。写操作要求同源 Origin 和 CSRF token。普通业务 Bearer API Key 与 Runner Token 认证边界维持独立；Bearer 错误时不会回退到 Cookie。
+
+生产部署必须使用 HTTPS，Secure Cookie 会随 TLS 生效。若 TLS 在反向代理终止，需配置精确的 `server.publicOrigin`，并仅在 `server.trustProxy` 中列出受控代理 IP/CIDR。默认不信任代理，也不接受通配代理范围。
 
 ## 主题
 
@@ -80,7 +78,7 @@ localStorage["aylens.admin.theme"]
 
 ```text
 主题偏好 -> localStorage
-API Key  -> sessionStorage
+API Key -> 仅登录请求使用，随后从浏览器内存清除
 ```
 
 ## Runtime 页面

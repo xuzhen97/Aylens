@@ -15,6 +15,9 @@ POST /v1/providers/:providerId/auth/login
 GET  /v1/runtimes
 GET  /v1/audit/:requestId
 GET  /v1/admin/overview
+POST /v1/admin/session/login
+GET  /v1/admin/session
+POST /v1/admin/session/logout
 ```
 
 Runner WebSocket：
@@ -59,7 +62,15 @@ Authorization: Bearer <AYLENS_API_KEY>
 AYLENS_API_KEY=dev-key
 ```
 
-## Search
+## 管理会话
+
+Admin 登录使用 `POST /v1/admin/session/login`，请求 JSON `{ "apiKey": "<现有 Gateway API Key>" }`。成功时返回 `{ "authenticated": true, "expiresAt": <毫秒时间戳>, "csrfToken": "<随机 token>" }` 并设置 `aylens.admin.session` HttpOnly Cookie；会话绝对有效 2 小时。
+
+`GET /v1/admin/session` 探测当前会话；`POST /v1/admin/session/logout` 需同源 Origin 和 `X-CSRF-Token`，成功后撤销并清除 Cookie。所有 session 响应使用 no-store。
+
+Cookie 会话只授权 `GET /v1/admin/overview`、`POST /v1/search` 和 Provider auth login/check 指定路由。所有写请求校验精确 Origin 与 CSRF。`Authorization: Bearer` 认证和 Runner Token 不受 Cookie 影响；无效 Bearer 绝不回退到 Cookie。
+
+通过 HTTPS 部署可设置 Secure Cookie。TLS 反向代理需显式设置 `server.publicOrigin`，并限制 `server.trustProxy` 到实际代理 IP/CIDR。生产环境必须在 HTTPS 下使用管理登录。
 
 请求：
 

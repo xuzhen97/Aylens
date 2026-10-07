@@ -39,12 +39,12 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway。
 pnpm install
 ```
 
-基础验证：
-
 ```bash
-pnpm typecheck
-pnpm test
-pnpm build
+pnpm dev:admin
+pnpm --filter @aylens/admin typecheck
+pnpm --filter @aylens/admin test
+pnpm build:admin
+pnpm build:gateway
 ```
 
 构建产物会变成可直接部署的 Release：
@@ -56,6 +56,7 @@ release/
 ├── pm2-start.ps1 / pm2-start.cmd / pm2-start.sh
 ├── gateway/
 │   ├── aylens-gateway.mjs
+│   ├── admin/                 # 已构建的 React Admin 静态资源
 │   ├── package.json
 │   ├── ecosystem.config.cjs
 │   ├── pm2-start.*
@@ -78,7 +79,7 @@ pnpm start:gateway
 pnpm start:runner
 ```
 
-复制 `release/gateway` 或 `release/runner` 到另一台已有 Node.js 的机器后，在对应目录执行 `npm install --omit=dev`，再执行 `npm start` 即可。
+复制 `release/gateway` 或 `release/runner` 到另一台已有 Node.js 的机器后，在对应目录执行 `npm install --omit=dev`，再执行 `npm start` 即可。Gateway 产物已经包含 `admin/` 静态资源，无需前端服务器。
 
 生产环境也可以使用 PM2。构建后的 `release/`、`release/gateway/`、`release/runner/` 都包含 `ecosystem.config.cjs` 和跨平台 `pm2-start` 脚本。安装 `pm2` 后，Windows PowerShell 执行 `./pm2-start.ps1`，Linux/macOS 执行 `./pm2-start.sh`；脚本会使用 `startOrRestart` 启动/更新进程并执行 `pm2 save`。
 
@@ -114,19 +115,13 @@ config/runner.yaml
 http://127.0.0.1:3000
 ```
 
-后台：
-
-```text
-http://127.0.0.1:3000/admin
-```
+生产 Gateway 会同源提供管理前端，部署无需启动 Vite 或额外前端服务；默认地址为 `http://127.0.0.1:3000/admin`。Admin 登录复用 `auth.apiKey`，成功后使用两小时绝对有效的 HttpOnly 管理会话。
 
 默认开发 API Key：
 
 ```text
 dev-key
 ```
-
-如果使用自定义配置且默认 route 没有任何 Provider，`/v1/search` 会成功返回空结果。
 本仓库的默认配置已经把 generic-browser 验证 Provider 接进 `routes.default`，
 并把 X Provider 接进独立的 `routes.x`。请同时启动 Runner，否则 /v1/search 会报找不到可用 Runtime。
 

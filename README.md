@@ -74,6 +74,7 @@ release/
 ├── pm2-start.ps1 / pm2-start.cmd / pm2-start.sh
 ├── gateway/
 │   ├── aylens-gateway.mjs
+│   ├── admin/                 # 已构建的 React Admin 静态前端
 │   ├── package.json
 │   ├── ecosystem.config.cjs
 │   ├── pm2-start.*
@@ -241,31 +242,24 @@ MCP 当前只提供 tool adapter definitions，还没有完整 MCP SDK server / 
 /admin/tester        请求测试
 ```
 
-支持跟随系统、亮色、暗色主题。
+生产 Admin 由 Gateway 在 `/admin` 同源托管，使用现有 API Key 换取 2 小时管理会话。前端开发/测试：`pnpm dev:admin`、`pnpm test:admin`、`pnpm typecheck:admin`；部署配置见 [docs/admin-ui.md](./docs/admin-ui.md)。
 
 详见 [docs/admin-ui.md](./docs/admin-ui.md)。
 
 ## 常用命令
 
 ```text
-pnpm dev
-pnpm dev:runner
+pnpm dev:admin
+pnpm test:admin
+pnpm typecheck:admin
+pnpm test:release
 
 pnpm typecheck
 pnpm test
 pnpm build
-
-pnpm smoke:generic-browser
 ```
 
-当前自动测试基线：
-
-```text
-13 个测试文件
-50 个测试
-```
-
-详见 [docs/testing.md](./docs/testing.md)。
+详见 [docs/testing.md](./docs/testing.md)，分层测试结果以当前命令为准。
 
 ## 文档
 

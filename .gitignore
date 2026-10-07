@@ -1,6 +1,8 @@
 node_modules/
 dist/
 release/
+.tmp/
+apps/admin/dist/
 coverage/
 .env
 .env.*
@@ -10,6 +12,8 @@ coverage/
 # Runner 侧 persistent Chrome 用户数据目录
 .profiles/
 
-
-# Playwright MCP runtime artifacts
+# Playwright MCP captures
 .playwright-mcp/
+
+# Admin web workspace build artifacts
+apps/admin/dist/

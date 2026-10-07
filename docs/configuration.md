@@ -29,10 +29,14 @@ ${VAR}
 ${VAR:-fallback}
 ```
 
-## Gateway 最小结构
-
 ```yaml
-version: 1
+server:
+  host: 0.0.0.0
+  port: 3000
+  publicOrigin: "https://aylens.example.com"
+  trustProxy:
+    - "127.0.0.1"
+    - "10.20.0.0/16"
 
 auth:
   apiKey: "${AYLENS_API_KEY:-dev-key}"
@@ -49,7 +53,7 @@ routes:
       - generic-browser
 ```
 
-Gateway 侧不再有 `transports` 与 `browserProfiles` 段：Gateway 不做抓取，因此不持有 Transport 或 Browser Profile。Provider 的 `transport`、`browser` 与 `options` 只存在于 Runner Provider Deployment。
+Gateway Admin 登录使用当前 `auth.apiKey`，不需要新增管理 Key。线上应配置 HTTPS 对外 Origin；若 TLS 在受控反向代理终止，精确配置 `publicOrigin` 和可信代理地址/CIDR。默认 `trustProxy: []`，不要设置宽泛网段或通配信任。非 loopback 明文 HTTP 不允许建立管理会话。Provider 的 `transport`、`browser` 与 `options` 只存在于 Runner Provider Deployment。
 
 `server` 与 `runtimeRegistry` 都有默认值。Provider 的 `runtime` placement 也可以省略；此时 Gateway 会按 Provider ID 与 Type，从实际部署该 Provider 的在线 Runner 中选择。
 

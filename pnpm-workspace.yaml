@@ -8,3 +8,6 @@
 # 因此显式关闭它的构建脚本可以让安装更快更干净（已实测 transform 正常）。
 allowBuilds:
   esbuild: false
+
+packages:
+  - "apps/*"

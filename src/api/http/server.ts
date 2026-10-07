@@ -1,10 +1,14 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
+import cookie from "@fastify/cookie";
 import { z } from "zod";
 import type { GatewayContext } from "../../app/context.js";
 import { RetrievalError, toErrorPayload } from "../../core/errors.js";
 import { attachRunnerGateway } from "../../runtime/runner-gateway.js";
-import { renderAdminPage, type AdminPage } from "./admin-page.js";
+import { registerAdminStatic, resolveAdminStaticRoot } from "./admin-static.js";
 import { buildAdminOverview } from "./admin-data.js";
+import { AdminHttpError, authenticateAdminOrBearer } from "./admin-security.js";
+import { AdminSessionStore, LoginLimiter } from "./admin-session.js";
+import { registerAdminSessionRoutes } from "./admin-session-routes.js";
 
 const searchSchema = z.object({
   query: z.string().min(1),
@@ -14,10 +18,32 @@ const searchSchema = z.object({
   language: z.string().min(1).optional(),
 });
 
-export function buildHttpServer(context: GatewayContext): FastifyInstance {
-  const app = Fastify({ logger: true });
+export function buildHttpServer(context: GatewayContext, options: Pick<FastifyServerOptions, "logger"> & { adminStaticRoot?: string } = {}): FastifyInstance {
+  const app = Fastify({
+    logger: options.logger ?? {
+      level: "info",
+      redact: {
+        paths: ["req.headers.authorization", "req.headers.cookie", "req.headers.x-csrf-token", "res.headers.set-cookie", "req.body.apiKey"],
+        censor: "[Redacted]",
+      },
+    },
+    trustProxy: context.config.server.trustProxy.length > 0 ? context.config.server.trustProxy : false,
+    bodyLimit: 1024 * 1024,
+  });
+  const sessions = new AdminSessionStore({ getApiKey: () => context.config.auth.apiKey });
+  const loginLimiter = new LoginLimiter();
+
+  void app.register(cookie);
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AdminHttpError) {
+      reply.header("cache-control", "no-store");
+      if (error.retryAfterSeconds !== undefined) reply.header("retry-after", String(error.retryAfterSeconds));
+      return reply.status(error.statusCode).send({
+        error: { code: error.code, message: error.message, retryable: error.statusCode >= 500 },
+      });
+    }
+
     if (error instanceof z.ZodError) {
       return reply.status(400).send({
         error: { code: "INVALID_REQUEST", message: z.prettifyError(error), retryable: false },
@@ -35,27 +61,8 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
 
   app.get("/health", async () => ({ status: "ok" }));
 
-  const sendAdminPage = (page: AdminPage) =>
-    async (_request: unknown, reply: import("fastify").FastifyReply) => {
-      return reply
-        .header("cache-control", "no-store")
-        .header("x-frame-options", "DENY")
-        .header("x-content-type-options", "nosniff")
-        .header(
-          "content-security-policy",
-          "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
-        )
-        .type("text/html; charset=utf-8")
-        .send(renderAdminPage(page));
-    };
+  registerAdminStatic(app, { root: options.adminStaticRoot ?? resolveAdminStaticRoot(import.meta.url) });
 
-  app.get("/admin", sendAdminPage("overview"));
-  app.get("/admin/", sendAdminPage("overview"));
-  app.get("/admin/runtimes", sendAdminPage("runtimes"));
-  app.get("/admin/providers", sendAdminPage("providers"));
-  app.get("/admin/profiles", sendAdminPage("profiles"));
-  app.get("/admin/audits", sendAdminPage("audits"));
-  app.get("/admin/tester", sendAdminPage("tester"));
 
   app.get("/ready", async () => ({
     status: "ready",
@@ -64,11 +71,13 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
 
   app.addHook("preHandler", async (request) => {
     if (!request.url.startsWith("/v1/") || request.url === context.config.server.runnerPath) return;
-    const authorization = request.headers.authorization ?? "";
-    if (authorization !== `Bearer ${context.config.auth.apiKey}`) {
-      throw new RetrievalError("AUTH_FAILED", "Invalid API key");
-    }
+    const route = request.routeOptions.url;
+    if (route === "/v1/admin/session/login" || route === "/v1/admin/session" || route === "/v1/admin/session/logout") return;
+    authenticateAdminOrBearer(request, context, sessions);
   });
+
+  registerAdminSessionRoutes({ app, context, sessions, limiter: loginLimiter });
+  app.get("/v1/admin/overview", async () => buildAdminOverview(context));
 
   app.post("/v1/search", async (request) => {
     return context.search.search(searchSchema.parse(request.body));
@@ -98,12 +107,14 @@ export function buildHttpServer(context: GatewayContext): FastifyInstance {
     runtimes: context.runtimes.list(),
   }));
 
-  app.get("/v1/admin/overview", async () => buildAdminOverview(context));
-
   app.get<{ Params: { requestId: string } }>("/v1/audit/:requestId", async (request, reply) => {
     const record = context.audit.get(request.params.requestId);
     if (!record) return reply.status(404).send({ error: { code: "NOT_FOUND", message: "Audit record not found" } });
     return record;
+  });
+
+  app.addHook("onClose", async () => {
+    sessions.clear();
   });
 
   attachRunnerGateway({

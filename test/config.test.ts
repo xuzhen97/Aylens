@@ -51,12 +51,19 @@ describe("config", () => {
       host: "127.0.0.1",
       port: 3000,
       runnerPath: "/v1/runners/connect",
+      trustProxy: [],
     });
     expect(parsed.runtimeRegistry).toEqual({
       heartbeatTimeoutMs: 30_000,
       offlineAfterMs: 60_000,
       jobTimeoutMs: 30_000,
     });
+  });
+
+  it("rejects unsafe origins and proxy trust shortcuts", () => {
+    expect(() => appConfigSchema.parse({ version: 1, auth: { apiKey: "a" }, server: { publicOrigin: "https://user:pass@example.test" } })).toThrow();
+    expect(() => appConfigSchema.parse({ version: 1, auth: { apiKey: "a" }, server: { publicOrigin: "https://example.test/path" } })).toThrow();
+    expect(() => appConfigSchema.parse({ version: 1, auth: { apiKey: "a" }, server: { trustProxy: ["*"] } })).toThrow();
   });
 
   it("supports a shared Runner default browser profile and rejects an unknown default", () => {

@@ -1,12 +1,48 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 
+const publicOriginSchema = z.string().url().refine((value) => {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username && !url.password && url.pathname === "/" && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}, "Public origin must be an HTTP(S) origin without credentials, path, query, or fragment").transform((value) => {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value;
+  }
+});
+
+const trustProxyEntrySchema = z.string().refine((value) => {
+  const [address, prefix, extra] = value.split("/");
+  if (!address || extra !== undefined) return false;
+  const version = isIP(address);
+  if (version === 0) return false;
+  if (prefix === undefined) return true;
+  if (!/^\d+$/.test(prefix)) return false;
+  const bits = Number(prefix);
+  return bits >= 0 && bits <= (version === 4 ? 32 : 128);
+}, "Trusted proxy must be an IP address or valid CIDR");
+
+const urlProtocol = (value: string): string | undefined => {
+  try {
+    return new URL(value).protocol;
+  } catch {
+    return undefined;
+  }
+};
+
 const httpProxyUrlSchema = z.string().url().refine((value) => {
-  const protocol = new URL(value).protocol;
+  const protocol = urlProtocol(value);
   return protocol === "http:" || protocol === "https:";
 }, "HTTP proxy URL must use http:// or https://");
 
 const socks5UrlSchema = z.string().url().refine((value) => {
-  const protocol = new URL(value).protocol;
+  const protocol = urlProtocol(value);
   return protocol === "socks5:" || protocol === "socks5h:";
 }, "SOCKS5 proxy URL must use socks5:// or socks5h://");
 
@@ -69,10 +105,13 @@ export const appConfigSchema = z.object({
     host: z.string().default("127.0.0.1"),
     port: z.number().int().min(1).max(65535).default(3000),
     runnerPath: z.string().startsWith("/").default("/v1/runners/connect"),
+    publicOrigin: publicOriginSchema.optional(),
+    trustProxy: z.array(trustProxyEntrySchema).default([]),
   }).default({
     host: "127.0.0.1",
     port: 3000,
     runnerPath: "/v1/runners/connect",
+    trustProxy: [],
   }),
   auth: z.object({
     apiKey: z.string().min(1),
@@ -103,7 +142,6 @@ export const appConfigSchema = z.object({
       }
     }
   }
-
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
