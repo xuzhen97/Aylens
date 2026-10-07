@@ -6,10 +6,10 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [getting-started.md](./getting-started.md) | 安装、最小启动、generic-browser 快速验证 |
+| [getting-started.md](./getting-started.md) | 安装、最小启动、url-fetch 快速验证 |
 | [configuration.md](./configuration.md) | Gateway / Runner 配置、环境变量、Runtime selector、Transport、Browser Profile |
 | [runtime.md](./runtime.md) | Gateway / Runner 分布式执行、Transport、BrowserHost、Profile Lease |
-| [providers.md](./providers.md) | ProviderFactory、Runner Plugin、generic-browser、如何添加新 Provider |
+| [providers.md](./providers.md) | ProviderFactory、Runner Plugin、url-fetch、如何添加新 Provider |
 | [api.md](./api.md) | 当前 REST API、鉴权、MCP adapter 状态 |
 | [admin-ui.md](./admin-ui.md) | 后台页面、主题、API Key、安全边界 |
 | [operations.md](./operations.md) | Gateway / Runner 启动、人工登录态验收、故障定位 |

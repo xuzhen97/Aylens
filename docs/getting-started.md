@@ -17,13 +17,13 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway。
 - Browser Profile / Lease
 - Playwright + Google Chrome BrowserHost
 - persistent profile 与 CDP attach
-- generic-browser 验证 Provider
+- url-fetch：HTTP 优先的 URL 抓取 Provider（浏览器仅最后兜底）
 - 内存 Audit
 - Admin UI
 - MCP tool adapter definitions
 - 单元测试与 Gateway/Runner 集成测试
 
-当前还没有接入真正的搜索渠道，例如 Google、Brave、X、知乎、小红书。generic-browser 只是用于验证完整浏览器执行链路。
+除 X 之外还没有接入其他搜索渠道（Google、Brave、知乎、小红书等）。`url-fetch` 不是搜索 Provider，而是通用的 URL 抓取入口：HTTP 优先、浏览器只在最后兜底，输出 Markdown。
 
 ## 环境
 
@@ -68,7 +68,7 @@ release/
 │   ├── pm2-start.*
 │   └── config/runner.yaml
 └── providers/
-    ├── generic-browser.aylens-provider
+    ├── url-fetch.aylens-provider
     └── x-search.aylens-provider
 ```
 
@@ -122,18 +122,18 @@ http://127.0.0.1:3000
 ```text
 dev-key
 ```
-本仓库的默认配置已经把 generic-browser 验证 Provider 接进 `routes.default`，
+本仓库的默认配置已经把 url-fetch 接进 `routes.default`，
 并把 X Provider 接进独立的 `routes.x`。请同时启动 Runner，否则 /v1/search 会报找不到可用 Runtime。
 
-## generic-browser 快速验证
+## url-fetch 快速验证
 
 这个 Provider 已在默认配置里接好：
 
 ```text
-src/providers/generic-browser/index.ts                 官方 Provider 源码
-release/providers/generic-browser.aylens-provider    独立 Provider 分发包
-config/aylens.yaml                                  providers.generic-browser + routes.default
-config/runner.yaml                                  generic-browser + x-search + browser-main Profile
+src/providers/url-fetch/index.ts                 官方 Provider 源码
+release/providers/url-fetch.aylens-provider    独立 Provider 分发包
+config/aylens.yaml                                  providers.url-fetch + routes.default
+config/runner.yaml                                  url-fetch + x-search + browser-main Profile
 ```
 
 X Provider 同样已在默认配置接好：`src/providers/x-search/index.ts` / `release/providers/x-search.aylens-provider` / Provider ID `x`。首次使用可在 `/admin/providers` 点击 `登录`，在 Runner 的可见 `browser-main` Chrome 中完成 X 登录，再点击 `检查状态`。
@@ -157,13 +157,15 @@ curl.exe http://127.0.0.1:3000/v1/runtimes `
 curl.exe -X POST http://127.0.0.1:3000/v1/search `
   -H "Authorization: Bearer dev-key" `
   -H "Content-Type: application/json" `
-  -d '{"query":"https://example.com","sources":["generic-browser"]}'
+  -d '{"query":"https://example.com","sources":["url-fetch"]}'
 ```
 
-也可以执行真实 Chrome smoke test：
+也可以执行 smoke test（策略拒绝环回/私网 + 离线 fixture 提取，并可选用 `AYLENS_SMOKE_URL` 做一次真实公网抓取）：
 
 ```bash
-pnpm smoke:generic-browser
+pnpm smoke:url-fetch
 ```
+
+> 注意：受策略限制，**不能拿 localhost 当抓取目标**，请用真实公网 URL 或离线 fixture。
 
 更完整的 Runner、人工登录态和故障排查见 [operations.md](./operations.md)。

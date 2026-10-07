@@ -116,7 +116,7 @@ BrowserHost 会：
 5. 操作结束释放 Lease；
 6. Runtime 关闭时清理 Aylens 自己创建的 Context。
 
-`browser.defaultProfile` 由 Runner 注入给 ProviderFactory。`generic-browser` 已实现“Provider 显式 `browser.profile` 优先，否则使用 Runner 默认 Profile”；其他 Browser Provider 如果也要复用这一机制，应采用同样的 fallback 逻辑。
+`browser.defaultProfile` 由 Runner 注入给 ProviderFactory。`url-fetch` 只在进入浏览器兜底阶段时才会用到它——HTTP 阶段与浏览器无关；它已实现“Provider 显式 `browser.profile` 优先，否则使用 Runner 默认 Profile”。其他 Browser Provider 如果也要复用这一机制，应采用同样的 fallback 逻辑。
 
 默认建议登录 Profile 使用：
 
@@ -167,7 +167,7 @@ runner:
 plugins:
   baseDir: "."
   modules:
-    - "builtin:generic-browser"
+    - "builtin:url-fetch"
     - "builtin:x-search"
     # 也可以加载 ./providers/example.aylens-provider、外部 ESM 路径或 npm package
 
@@ -175,8 +175,8 @@ browser:
   defaultProfile: browser-main
 
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
   x:
     type: x-search
 

@@ -19,7 +19,7 @@ pnpm test:release
 真实 Chrome smoke：
 
 ```bash
-pnpm smoke:generic-browser
+pnpm smoke:url-fetch
 ```
 
 Git whitespace 检查：
@@ -35,7 +35,7 @@ Vitest 默认不会启动真实 Google Chrome。浏览器相关单元/组件测�
 真实 Chrome 验证使用：
 
 ```text
-pnpm smoke:generic-browser
+pnpm smoke:url-fetch
 ```
 
 ## 测试矩阵
@@ -104,14 +104,16 @@ Runner 协议：
 - WebSocket job result
 - 结构化错误码保真
 
-generic-browser：
+url-fetch：
 
-- 仅允许 HTTP / HTTPS
-- 拒绝 embedded credentials
-- title / body text
-- 截断与 snippet
-- keepPageOpen
-- BrowserHost 注入
+- 仅允许 HTTP / HTTPS，拒绝 embedded credentials
+- 公网目标校验：环回 / 私网 / 链路本地一律拒绝，无 allowPrivate 开关
+- 原生 Markdown、HTML 静态提取、纯文本三条路径
+- 挑战页 / 登录页 / JS 空壳的判定与各自失败语义
+- 兜底不可用时返回已抓取的静态内容，但登录页仍必须失败
+- 重定向逐跳复校验、响应解压与编码降级、限流截断
+- 请求头：Accept 内容协商与 User-Agent（缺失 UA 会导致 403）
+- 浏览器兜底：Profile 租约与取消后不进 callback
 
 Admin UI：
 
@@ -134,7 +136,7 @@ pnpm test：
 - 适合 CI
 - 验证边界与协议
 
-pnpm smoke:generic-browser：
+pnpm smoke:url-fetch：
 
 - 启动真实 Google Chrome
 - 使用 persistent BrowserContext
@@ -161,7 +163,7 @@ pnpm build
 修改浏览器 Runtime 后，再执行：
 
 ```text
-pnpm smoke:generic-browser
+pnpm smoke:url-fetch
 ```
 
 发布或重要重构前，再按 [operations.md](./operations.md) 做一次人工 Gateway/Runner 验收。

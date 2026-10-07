@@ -7,7 +7,7 @@
 
 Aylens 是面向 AI Agent 的统一互联网 Retrieval Gateway。当前系统提供统一 Search 协议，并把所有真实网络访问和浏览器执行放到 Runner。
 
-当前仓库内置 `generic-browser` 作为 Browser Provider，用于验证完整的 Gateway → Runner → Chrome → Gateway 链路。其他渠道通过相同 Provider Plugin 契约接入，不改变核心调度链路。
+当前仓库内置 `url-fetch`（HTTP 优先的 URL 抓取，浏览器仅作最后兜底）与 `x-search`。前者证明完整的 Gateway → Runner → 网络/Chrome → Gateway 链路在**不必须启动浏览器**时也能成立；其他渠道通过相同 Provider Plugin 契约接入，不改变核心调度链路。
 
 ## 2. 最终架构边界
 
@@ -75,13 +75,13 @@ Gateway 只保存逻辑定义和 placement：
 
 ```yaml
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
     enabled: true
     runtime:
       selector:
         os: windows
-        providerType: generic-browser
+        providerType: url-fetch
         browser: chrome
         profile: browser-main
 ```
@@ -116,8 +116,8 @@ browser:
   defaultProfile: browser-main
 
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
     options:
       timeoutMs: 30000
   x:
@@ -147,13 +147,13 @@ Provider 通过 `ProviderFactory` 在 Runner 注册。Runner 支持：
 
 只有成功加载的 Provider Type 才会进入 Runner capability。
 
-内置 `generic-browser`：
+内置 `url-fetch`：
 
 - 仅接受 HTTP / HTTPS URL；
-- 拒绝 URL 中嵌入用户名密码；
-- 使用 BrowserHost 打开页面；
-- 提取 title 与正文文本；
-- 返回统一 `SearchDocument`。
+- 拒绝 URL 中嵌入用户名密码，且默认只允许公网目标；
+- HTTP 优先：原生 Markdown 内容协商 → 静态提取（Readability + linkedom）；
+- 仅当判定需要渲染或有会话时才启用浏览器兑底；
+- 提取 title、正文文本与 Markdown，返回统一 `SearchDocument`。
 
 内置 `x-search`：
 
@@ -175,7 +175,7 @@ browser:
   defaultProfile: browser-main
 ```
 
-`generic-browser` 与 `x-search` 使用以下优先级：
+`url-fetch` 与 `x-search` 使用以下优先级：
 
 ```text
 provider.browser.profile
@@ -339,7 +339,7 @@ Audit 当前是内存实现：
 - Proxy credential 只存在 Runner；
 - Cookie、Local Storage、Browser Profile 只存在 Runner；
 - Admin API 对敏感字段做隐藏或脱敏；
-- `generic-browser` 只接受 HTTP/HTTPS，并拒绝 URL 内嵌 credential。
+- `url-fetch` 只接受 HTTP/HTTPS、拒绝 URL 内嵌 credential，并默认只允许公网目标（环回 / 私网 / 链路本地一律拒绝，无 allowPrivate 开关）；代理与浏览器兜底需要部署方显式声明出口已受控。
 
 ## 15. 构建与部署
 
@@ -352,7 +352,7 @@ release/
 ├── runner/
 │   └── aylens-runner.mjs
 ├── providers/
-│   ├── generic-browser.aylens-provider
+│   ├── url-fetch.aylens-provider
 │   └── x-search.aylens-provider
 ├── ecosystem.config.cjs
 └── pm2-start.*

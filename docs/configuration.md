@@ -14,8 +14,9 @@ Runner：
 config/runner.yaml
 ```
 
-默认配置（`config/aylens.yaml` / `config/runner.yaml`）已接入 generic-browser，
-开箱即用。可通过环境变量覆盖配置文件位置：
+默认配置（`config/aylens.yaml` / `config/runner.yaml`）已接入 url-fetch，
+开箱即用——HTTP 阶段默认走 `proxy-main`，不启动浏览器也能使用代理。
+可通过环境变量覆盖配置文件位置：
 
 ```text
 AYLENS_CONFIG
@@ -44,13 +45,13 @@ auth:
     dev-runner: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
 
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
 
 routes:
   default:
     providers:
-      - generic-browser
+      - url-fetch
 ```
 
 Gateway Admin 登录使用当前 `auth.apiKey`，不需要新增管理 Key。线上应配置 HTTPS 对外 Origin；若 TLS 在受控反向代理终止，精确配置 `publicOrigin` 和可信代理地址/CIDR。默认 `trustProxy: []`，不要设置宽泛网段或通配信任。非 loopback 明文 HTTP 不允许建立管理会话。Provider 的 `transport`、`browser` 与 `options` 只存在于 Runner Provider Deployment。
@@ -66,7 +67,7 @@ runner:
   token: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
 plugins:
   modules:
-    - "builtin:generic-browser"
+    - "builtin:url-fetch"
     - "builtin:x-search"
     # 外部扩展推荐：- "./providers/example.aylens-provider"
 
@@ -75,8 +76,14 @@ browser:
   defaultProfile: browser-main
 
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
+    transport:
+      primary: proxy-main
+      fallback: [direct]
+    options:
+      controlledProxyEgress: true
+      httpTimeoutMs: 25000
   x:
     type: x-search
 
@@ -91,7 +98,7 @@ browserProfiles:
 
 Runner 不再要求手工填写 `capabilities`。Provider Type 来自实际加载成功的 Plugin，Provider ID 来自本机 Deployment，Browser/Profile 能力来自实际 Browser Profile。Direct Transport、Plugin `baseDir`、心跳和并发数都有默认值。
 
-`browser.defaultProfile` 是 Runner 级共享浏览器工作区。Runner 会把它作为 `services.defaultBrowserProfile` 注入 ProviderFactory；`generic-browser` 和 `x-search` 都在未配置 `provider.browser.profile` 时使用该默认值。其他 Browser Provider 也应采用 `config.browser?.profile ?? services.defaultBrowserProfile` 的逻辑。需要隔离账号时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
+`browser.defaultProfile` 是 Runner 级共享浏览器工作区。Runner 会把它作为 `services.defaultBrowserProfile` 注入 ProviderFactory；`x-search` 始终使用该默认值，`url-fetch` 只在进入浏览器兜底阶段时才会用到它——它的 HTTP 阶段与浏览器完全无关。两者在未配置 `provider.browser.profile` 时都回退到该默认值。其他 Browser Provider 也应采用 `config.browser?.profile ?? services.defaultBrowserProfile` 的逻辑。需要隔离账号时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
 
 默认 Profile 使用 managed CDP：Runner 不再通过 Playwright `launchPersistentContext()` 创建浏览器，而是直接启动系统安装的 Google Chrome 进程，再通过 `connectOverCDP()` attach。人工登录发生在普通 Chrome 窗口中；平时检索仍由 Provider 自动操作任务页面。
 
@@ -103,14 +110,14 @@ Provider 定义与执行机器是两个概念。默认情况下无需配置 `run
 
 ```yaml
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
     enabled: true
 
     runtime:
       selector:
         os: windows
-        providerType: generic-browser
+        providerType: url-fetch
         browser: chrome
         profile: browser-main
 
@@ -118,11 +125,11 @@ providers:
 
 这里表达的是：
 
-- Provider instance：generic-browser
-- Provider type：generic-browser
+- Provider instance：url-fetch
+- Provider type：url-fetch
 - Runtime OS：Windows
 - Runtime 已加载对应 Provider Plugin
-- Runtime 已部署 generic-browser 这个 Provider ID
+- Runtime 已部署 url-fetch 这个 Provider ID
 - Runtime 提供 Chrome
 - Runtime 拥有 browser-main Profile
 
@@ -133,8 +140,8 @@ browser:
   defaultProfile: browser-main
 
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
     options:
       timeoutMs: 30000
 ```

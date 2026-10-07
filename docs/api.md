@@ -85,7 +85,7 @@ Authorization: Bearer dev-key
 ```json
 {
   "query": "https://example.com",
-  "sources": ["generic-browser"],
+  "sources": ["url-fetch"],
   "limit": 10
 }
 ```

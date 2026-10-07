@@ -2,7 +2,7 @@
 
 Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway，使用 Node.js / TypeScript 构建。
 
-当前仓库重点是检索基础架构和分布式执行能力。已接入 `x-search` 作为首个真实站点 Browser Provider；`generic-browser` 继续用于验证 Browser Runtime、Runner、登录态和完整检索链路。其他搜索渠道仍按相同 Provider Plugin 契约扩展。
+当前仓库重点是检索基础架构和分布式执行能力。已接入 `x-search` 作为真实站点 Browser Provider；`url-fetch` 是 HTTP 优先的通用 URL 抓取 Provider——输入一个 URL，能不用浏览器就不用，只有静态获取不足时才最后启用浏览器兜底，输出 Markdown 与纯文本。其他搜索渠道仍按相同 Provider Plugin 契约扩展。
 
 ## 已实现
 
@@ -20,7 +20,7 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway，使用 No
 - persistent Chrome profile
 - managed CDP：Runner 启动/复用普通系统 Chrome，再 attach
 - Runtime-local browser proxy
-- generic-browser 验证 Provider
+- url-fetch：HTTP 优先的 URL 抓取（原生 Markdown 协商 → 静态提取 → 浏览器最后兜底）
 - x-search：X 原生查询、Latest Post 提取、人工登录状态检测
 - 内存 Audit
 - Admin UI
@@ -86,11 +86,11 @@ release/
 │   ├── pm2-start.*
 │   └── config/runner.yaml
 └── providers/
-    ├── generic-browser.aylens-provider
+    ├── url-fetch.aylens-provider
     └── x-search.aylens-provider
 ```
 
-Gateway 和 Runner 的 Aylens 业务代码分别合并为单一 Bundle；第三方 Provider 可以分发为单个 `.aylens-provider` 文件。内置 `generic-browser` 与 `x-search` 都随 Runner Bundle 提供，同时也会产出独立 Provider 包作为标准分发物。
+Gateway 和 Runner 的 Aylens 业务代码分别合并为单一 Bundle；第三方 Provider 可以分发为单个 `.aylens-provider` 文件。内置 `url-fetch` 与 `x-search` 都随 Runner Bundle 提供，同时也会产出独立 Provider 包作为标准分发物。
 
 Release 同时生成 PM2 `ecosystem.config.cjs` 与 `pm2-start.ps1` / `pm2-start.cmd` / `pm2-start.sh`。可以在 `release/` 根目录同机管理 Gateway + Runner，也可以只复制 `gateway/` 或 `runner/` 后独立用 PM2 管理。详细命令见构建后的 `release/README.md`。
 
@@ -139,46 +139,40 @@ http://127.0.0.1:3000/admin
 dev-key
 ```
 
-默认配置把 generic-browser 验证 Provider 接入 `routes.default`，并增加 `routes.x -> x`。
-Runner 默认加载 `builtin:generic-browser` 与 `builtin:x-search`，两个浏览器 Provider 都通过 `browser.defaultProfile=browser-main` 共用同一个持久化 Profile。
+默认配置把 url-fetch 验证 Provider 接入 `routes.default`，并增加 `routes.x -> x`。
+Runner 默认加载 `builtin:url-fetch` 与 `builtin:x-search`。`x-search` 通过 `browser.defaultProfile=browser-main` 使用持久化 Profile；`url-fetch` 只在浏览器兜底阶段才会用到它。
 默认 `browser-main` 不再由 Playwright 启动，而是 `mode: cdp + autoStart: true`：Runner 直接启动或复用系统 Google Chrome，然后 `connectOverCDP()`。如果 Profile 配置了 Runner-local `transport`，Runner 会把它转换成 Chrome 自己的 `--proxy-server=...` 启动参数。
 两个进程都起来后，Admin UI 的 Providers 显示 2/2、Runtimes 显示 1/1（Gateway 自身不算节点）；
 只起 Gateway 不起 Runner，/v1/search 会报无可用 Runtime。
 
 更完整的启动说明见 [docs/getting-started.md](./docs/getting-started.md)。
 
-## generic-browser 验证
+## url-fetch：抓取一个 URL
 
-仓库提供一个最小 Browser Provider：
+HTTP 优先，**能不用浏览器就不用**：
 
 ```text
-src/providers/generic-browser/index.ts
+POST /v1/search { query: "https://example.com", sources: ["url-fetch"] }
+  -> Gateway
+  -> Runner
+  -> HTTP 获取（匿名，只发 Accept 与 User-Agent）
+       - 原生 Markdown 内容协商
+       - 否则 Readability 静态提取 -> Markdown / 纯文本
+  -> 仅当判定“需要渲染或有会话”时才启用浏览器兜底（persistent Chrome + 登录态）
+  -> SearchDocument（markdown + text）
 ```
 
-正式构建后，Runner 入口是 `release/runner/aylens-runner.mjs`；同一 Provider 源码还会生成 `release/providers/generic-browser.aylens-provider`，Gateway Bundle 不包含 Provider 执行逻辑。
+默认只允许公网目标：环回 / 私网 / 链路本地地址一律拒绝，没有开关可关。代理与浏览器兜底都需要在 Runner 配置里显式声明出口受控（`controlledProxyEgress` / `controlledBrowserEgress`），否则会明确拒绝，而不是静默改走直连。
 
-默认配置已经挂上它了（`config/aylens.yaml` 的 `providers` + `config/runner.yaml` 的
-`plugins.modules` 与 `browser-main` Profile），所以 `pnpm dev:all` 起来就能用。
-
-真实 Chrome smoke test：
+`pnpm dev:all` 起来就能用（默认配置已挂载）。真实验证：
 
 ```bash
-pnpm smoke:generic-browser
+pnpm smoke:url-fetch
 ```
 
-它会验证：
+它做四件事：验证策略确实拒绝环回/私网、离线 fixture 的提取、可选的 `AYLENS_SMOKE_URL` 真实公网抓取，并明确报告没有跑真实 Chrome 兜底。
 
-```text
-Gateway
-  -> Runner
-  -> generic-browser Plugin
-  -> BrowserHost
-  -> persistent Chrome
-  -> session reuse
-  -> Gateway
-```
-
-详细运行和人工登录态验收见 [docs/operations.md](./docs/operations.md)。
+默认 `config/runner.yaml` 让 url-fetch 的 HTTP 阶段走 `proxy-main`，因此**不启动 Chrome 也能使用代理**；只有浏览器兜底才使用 `browser-main` Profile。详细选项与出口语义见 [docs/providers.md](./docs/providers.md)，运行与故障排查见 [docs/operations.md](./docs/operations.md)。
 
 ## X 搜索与登录
 
@@ -269,7 +263,7 @@ pnpm build
 | [docs/getting-started.md](./docs/getting-started.md) | 快速开始 |
 | [docs/configuration.md](./docs/configuration.md) | 配置 |
 | [docs/runtime.md](./docs/runtime.md) | Gateway / Runner / Browser Runtime |
-| [docs/providers.md](./docs/providers.md) | Provider / Plugin / generic-browser |
+| [docs/providers.md](./docs/providers.md) | Provider / Plugin / url-fetch |
 | [docs/api.md](./docs/api.md) | REST 与 MCP adapter |
 | [docs/admin-ui.md](./docs/admin-ui.md) | 后台 UI |
 | [docs/operations.md](./docs/operations.md) | 运行、验收、故障排查 |

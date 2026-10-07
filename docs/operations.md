@@ -28,7 +28,7 @@ pnpm build
 
 ## 2. 启动 Gateway 与 Runner（推荐）
 
-默认配置已经接好 generic-browser —— Gateway 侧是 `config/aylens.yaml` 的 `providers` + `routes.default`，
+默认配置已经接好 url-fetch —— Gateway 侧是 `config/aylens.yaml` 的 `providers` + `routes.default`，
 Runner 侧是 `config/runner.yaml` 的 `plugins.modules` + `browser-main` Profile —— 因此一条命令即可：
 
 ```powershell
@@ -107,7 +107,7 @@ http://127.0.0.1:3000/admin/runtimes
 curl.exe -X POST http://127.0.0.1:3000/v1/search `
   -H "Authorization: Bearer dev-key" `
   -H "Content-Type: application/json" `
-  -d '{"query":"https://example.com","sources":["generic-browser"]}'
+  -d '{"query":"https://example.com","sources":["url-fetch"]}'
 ```
 
 预期 SearchDocument 至少有：
@@ -121,23 +121,20 @@ curl.exe -X POST http://127.0.0.1:3000/v1/search `
 
 也可以在 /admin/tester 直接发请求。
 
-## 6. 自动真实 Chrome smoke test
+## 6. url-fetch smoke test
 
 ```bash
-pnpm smoke:generic-browser
+pnpm smoke:url-fetch
 ```
 
-这个脚本会：
+它**不启动 Chrome**，而是做四件事：
 
-1. 启动临时 Gateway / Runner 链路；
-2. 启动本机真实 Google Chrome；
-3. 使用临时 persistent profile；
-4. 第一次请求建立 session cookie；
-5. 第二次请求访问受保护页面；
-6. 验证同一个 BrowserContext 复用了 Cookie；
-7. 清理临时 Profile。
+1. 验证网络策略确实拒绝环回与私网目标；
+2. 对离线 fixture 做提取，断言 Markdown / 纯文本结果；
+3. 如果设置了 `AYLENS_SMOKE_URL`，对真实公网 URL 抓一次；
+4. 明确报告没有跑真实 Chrome 兑底。
 
-它验证的是“真实 Chrome + 完整 Gateway/Runner 链路”，但不替代人工登录真实第三方站点。
+浏览器兑底的真实 Chrome 验收由 `x-search` 的 Auth Control 驱动，见下一节。
 
 ## 7. 验证人工登录态
 
@@ -163,14 +160,15 @@ CDP Profile 可以继续引用 Aylens `transport`。managed CDP 会把该 Transp
 
 完成密码、2FA 或验证码后，直接点击 `检查状态` 即可。Aylens 会先关闭自己启动的普通登录 Chrome，等待 Profile 释放，再用同一个 `browser-main` 启动 CDP Chrome 并临时 attach；不需要手工关闭浏览器。若普通登录 Chrome 无法在超时时间内退出，Runner 会明确返回浏览器切换失败，而不会继续抢占同一个 userDataDir。
 
-对于没有实现 Auth Control 的通用页面调试，`generic-browser` 仍可使用 `keepPageOpen`。它属于 Runner Provider Deployment，不属于 Gateway 配置，可在 `config/runner.yaml` 中临时设置：
+对于没有实现 Auth Control 的通用页面调试，`url-fetch` 已不再提供 `keepPageOpen`——它能静态提取的页面本来就不需要渲染，而真正需要渲染的页面必须由部署方显式确认浏览器出口。临时调试请在 `config/runner.yaml` 中显式声明：
 
 ```yaml
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
     options:
-      keepPageOpen: true
+      controlledBrowserEgress: true
+      # browserFallback 默认就是 true，需要时置为 false 可直接关闭兑底
 ```
 
 流程：
@@ -181,7 +179,7 @@ providers:
 4. Chrome 保持运行；Runner 重启后也可以重新 attach；
 5. 再请求登录后的页面；
 6. 验证返回内容包含 authenticated-only 内容；
-7. 登录稳定后把 keepPageOpen 改回 false。
+7. 后续检索直接复用该 Profile 的登录态，不需要重复登录。
 
 登录状态只留在实际执行该 Profile 的 Runner 本地。
 
@@ -206,18 +204,18 @@ providers:
 
 ## 9. 客户端渲染页面
 
-页面内容需要等待时可增加：
+`url-fetch` 的静态提取**不会等待 JavaScript**。页面被判定为需要渲染时（JS 空壳、`enable JavaScript` 提示、登录页、挑战页），它会尝试浏览器兑底：
+
+- 浏览器兑底需要 `controlledBrowserEgress: true`，否则明确拒绝；
+- 兑底跑不起来但静态内容仍可读时，返回静态内容并在 `extensions.warnings` 里说明；
+- 整页由 JS 渲染（空 `#root` + script）会返回 `CONTENT_UNAVAILABLE`，这是预期行为。
+
+静态抓取阶段的预算：
 
 ```yaml
 options:
-  postLoadDelayMs: 1000
-```
-
-只提取特定区域：
-
-```yaml
-options:
-  textSelector: main
+  timeoutMs: 25000        # 总预算
+  httpTimeoutMs: 8000     # HTTP 阶段预算；代理链路较慢时放宽
 ```
 
 页面很大时调整：
@@ -338,8 +336,8 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 
 检查：
 
-- postLoadDelayMs
-- textSelector
+- 是否命中 `browserFallback: false`（兑底被关闭）
+- 是否声明了 `controlledBrowserEgress`（未声明时浏览器兑底会被拒）
 - 页面是否在 iframe
 - 页面是否需要登录
 - 页面是否被风控 / 验证码阻断
@@ -364,8 +362,8 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 4. Gateway /health / /ready 正常；
 5. Runner online；
 6. Runtime capability 与实际 Plugin/Profile 一致；
-7. generic-browser 能读取 https://example.com；
-8. 真实 Chrome smoke test 通过；
+7. url-fetch 能读取 https://example.com（默认 HTTP 阶段走 `proxy-main`）；
+8. `pnpm smoke:url-fetch` 通过（策略拒绝回环/私网 + 离线 fixture 提取）；
 9. 人工登录后 authenticated page 能读取；
 10. Runner 重启后 persistent profile 登录态仍存在；
 11. Admin UI 不暴露 API Key、Runner Token、代理密码、本地 Chrome 路径。
