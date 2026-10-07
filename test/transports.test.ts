@@ -1,8 +1,11 @@
 import http from "node:http";
 import net from "node:net";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
+import { DirectTransport } from "../src/transports/direct.js";
 import { HttpProxyTransport } from "../src/transports/http-proxy.js";
 import { Socks5Transport } from "../src/transports/socks5.js";
+import type { TransportResponsePolicy } from "../src/transports/types.js";
 
 const servers: net.Server[] = [];
 
@@ -152,5 +155,96 @@ describe("proxy transports", () => {
       code: "PROXY_FAILED",
       retryable: true,
     });
+  });
+});
+
+describe("constrained responses through transports", () => {
+  function constrainedPolicy(overrides: Partial<TransportResponsePolicy> = {}): TransportResponsePolicy {
+    return {
+      maxBytes: 1_000_000,
+      maxDecodedBytes: 1_000_000,
+      decode: "web",
+      redirect: "manual",
+      network: "controlled-egress",
+      ...overrides,
+    };
+  }
+
+  /** 测试专用转发代理：只允许回环目标，避免成为一个通用的开放转发器。 */
+  function createForwardProxy(): http.Server {
+    return http.createServer((request, response) => {
+      const target = request.url ? new URL(request.url) : undefined;
+      if (!target || (target.hostname !== "127.0.0.1" && target.hostname !== "::1")) {
+        response.writeHead(403).end();
+        return;
+      }
+
+      // 只用通过白名单校验的分量构造上游请求，不把原始 URL 直接交给 http.request。
+      const upstream = http.request(
+        {
+          host: target.hostname,
+          port: target.port,
+          path: `${target.pathname}${target.search}`,
+          method: request.method,
+          headers: request.headers,
+        },
+        (upstreamResponse) => {
+          response.writeHead(upstreamResponse.statusCode ?? 500, upstreamResponse.headers);
+          upstreamResponse.pipe(response);
+        },
+      );
+      upstream.on("error", () => response.writeHead(502).end());
+      request.pipe(upstream);
+    });
+  }
+
+  it("enforces the byte limit on a direct constrained request", async () => {
+    const target = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("0123456789");
+    });
+    const targetPort = await listen(target);
+
+    await expect(new DirectTransport("direct-constrained").request({
+      url: `http://127.0.0.1:${targetPort}/`,
+      responsePolicy: constrainedPolicy({ maxBytes: 4 }),
+    })).rejects.toMatchObject({ code: "CONTENT_UNAVAILABLE" });
+  });
+
+  it("applies the response policy through the HTTP proxy transport", async () => {
+    const payload = "proxied constrained body";
+    const target = http.createServer((_request, response) => {
+      response.writeHead(200, {
+        "content-type": "text/plain; charset=utf-8",
+        "content-encoding": "gzip",
+      });
+      response.end(gzipSync(Buffer.from(payload)));
+    });
+    const targetPort = await listen(target);
+    const proxyPort = await listen(createForwardProxy());
+
+    const transport = new HttpProxyTransport("proxy-constrained", `http://127.0.0.1:${proxyPort}`);
+    const result = await transport.request({
+      url: `http://127.0.0.1:${targetPort}/`,
+      responsePolicy: constrainedPolicy(),
+    });
+
+    expect(result.body).toBe(payload);
+  });
+
+  it("reports a resource-limit rejection as CONTENT_UNAVAILABLE rather than PROXY_FAILED", async () => {
+    const target = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("0123456789");
+    });
+    const targetPort = await listen(target);
+    const proxyPort = await listen(createForwardProxy());
+
+    const transport = new HttpProxyTransport("proxy-constrained", `http://127.0.0.1:${proxyPort}`);
+
+    await expect(transport.request({
+      url: `http://127.0.0.1:${targetPort}/`,
+      responsePolicy: constrainedPolicy({ maxBytes: 4 }),
+    })).rejects.toMatchObject({ code: "CONTENT_UNAVAILABLE", retryable: false });
   });
 });

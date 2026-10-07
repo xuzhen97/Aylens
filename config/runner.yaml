@@ -5,20 +5,48 @@ runner:
 
 plugins:
   modules:
-    - "builtin:generic-browser"
+    - "builtin:url-fetch"
     - "builtin:x-search"
 
 browser:
-  # 多个浏览器 Provider 默认共用这个持久化 Profile，统一保存各站点登录状态。
+  # url-fetch 只在静态获取不足时最后尝试浏览器，并复用这个持久化 Profile 的登录态。
   defaultProfile: browser-main
 
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
+    # HTTP 阶段可以直接走代理，与浏览器无关：不启 Chrome 也能用。
+    # 若代理不可用会记 PROXY_FAILED（可重试）并尝试 fallback，而不是静默改直连。
+    transport:
+      primary: proxy-main
+      fallback: [direct]
+    # options 全部可选，且会被严格校验（未知键直接报错，不再静默回退默认值）：
+    #   timeoutMs / httpTimeoutMs          总预算与 HTTP 阶段预算
+    #   maxResponseBytes / maxDecodedBytes 压缩前/解压后的字节上限
+    #   maxDomElements / maxMarkdownChars / maxTextChars / snippetChars
+    #   contentMode: auto | article | full
+    #   contentSelector                   指定正文容器；选不中会明确失败
+    #
+    # controlledProxyEgress 是"Runner 所在机器已有受控出口"的部署声明，
+    # 不是实现出来的安全保证：走代理时本地 DNS 解析与公网地址校验不再生效
+    # （DNS 由代理远端做），所以必须由部署方确认出口已受限。
+    options:
+      controlledProxyEgress: true
+      # 注意这里不打开 controlledBrowserEgress：默认仍不启浏览器。
+      # 若某些页确实必须渲染，会明确失败（或返回已抓到的静态内容），而不是静默开 Chrome。
+      # 代理链路比直连慢（本机实测 Wikipedia 直连超时、代理 8.1s/321KB），
+      # 因此 HTTP 阶段预算要放宽，否则会在读完前就 TIMEOUT。
+      httpTimeoutMs: 25000
   x:
     type: x-search
 
 transports:
+  # url-fetch 未配置 provider.transport 时默认用 direct，因此这里必须显式声明：
+  # transports 段一旦出现，src/runner/config.ts 里的 schema 默认值就不再补 direct。
+  direct:
+    type: direct
+  # 代理出口。未确认受控前不要在上面 providers.url-fetch.options 里打开
+  # controlledProxyEgress：否则 provider 会明确拒绝代理传输，而不是静默走本地直连。
   proxy-main:
     type: http-proxy
     url: "http://127.0.0.1:10808"

@@ -38,11 +38,11 @@ function createAdminServer() {
     },
     providers: {
       browserRead: {
-        type: "generic-browser",
+        type: "url-fetch",
         enabled: true,
         runtime: {
           selector: {
-            providerType: "generic-browser",
+            providerType: "url-fetch",
             labels: {
               apiToken: "selector-label-secret",
               region: "test",
@@ -158,7 +158,7 @@ describe("admin UI", () => {
       providers: [
         {
           id: "browserRead",
-          type: "generic-browser",
+          type: "url-fetch",
         },
       ],
     });
@@ -175,7 +175,7 @@ describe("admin UI", () => {
       status: "online",
       labels: {},
       capabilities: {
-        providerTypes: ["generic-browser"],
+        providerTypes: ["url-fetch"],
         providerIds: ["browserRead"],
         browsers: ["chrome"],
         profiles: ["browser-main"],

@@ -19,7 +19,12 @@ export class HttpProxyTransport implements HttpTransport {
   }
 
   async request(request: TransportRequest): Promise<TransportResponse> {
-    const target = new URL(request.url);
+    let target: URL;
+    try {
+      target = new URL(request.url);
+    } catch (error) {
+      throw new RetrievalError("URL_FORBIDDEN", "Transport request URL is invalid", { cause: error });
+    }
 
     try {
       return await nodeRequest(
@@ -27,6 +32,8 @@ export class HttpProxyTransport implements HttpTransport {
         target.protocol === "https:" ? this.httpsAgent : this.httpAgent,
       );
     } catch (error) {
+      // 策略、大小、取消与解压错误是确定性结论，不能被包装成可重试的代理故障。
+      if (error instanceof RetrievalError) throw error;
       throw new RetrievalError("PROXY_FAILED", `HTTP proxy request failed: ${this.id}`, {
         retryable: true,
         cause: error,

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aylens API Reference</title>
+</head>
+<body>
+  <nav class="docs-nav">
+    <a href="/docs/intro">Introduction</a>
+    <a href="/docs/config">Configuration</a>
+    <a href="/docs/providers">Providers</a>
+    <a href="/docs/runtime">Runtime</a>
+    <a href="/docs/api">API</a>
+  </nav>
+  <main>
+    <h1>Search API</h1>
+    <p>Send a query to the search endpoint and read the documents that come back from the selected providers.</p>
+    <h2>Request</h2>
+    <pre><code class="language-bash">curl -X POST http://localhost:3000/v1/search \
+  -H "authorization: Bearer $AYLENS_API_KEY" \
+  -d '{"query":"example","sources":["url-fetch"]}'</code></pre>
+    <h2>Response fields</h2>
+    <table>
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>markdown</td><td>Structured document content</td></tr>
+        <tr><td>text</td><td>Plain text for existing consumers</td></tr>
+      </tbody>
+    </table>
+    <p>See the <a href="./configuration">configuration guide</a> for provider options.</p>
+  </main>
+  <section class="release-notes">
+    <h2>Release notes outside the main container</h2>
+    <p>This section lives outside the semantic main container and is only part of the full-page extraction.</p>
+  </section>
+</body>
+</html>

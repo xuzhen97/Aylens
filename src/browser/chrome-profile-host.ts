@@ -5,6 +5,10 @@ import type { BrowserDriver, BrowserDriverResult } from "./chrome-driver.js";
 import { PlaywrightChromeDriver } from "./chrome-driver.js";
 import type { BrowserProfileManager } from "./profile-manager.js";
 
+function browserCancelledError(): RetrievalError {
+  return new RetrievalError("TIMEOUT", "Browser session was cancelled", { retryable: true });
+}
+
 export class ChromeProfileHost implements BrowserHost {
   private readonly opened = new Map<string, BrowserDriverResult>();
   private readonly opening = new Map<string, Promise<BrowserDriverResult>>();
@@ -19,13 +23,21 @@ export class ChromeProfileHost implements BrowserHost {
     profileId: string,
     jobId: string,
     callback: (session: BrowserSession) => Promise<T>,
+    options: { signal?: AbortSignal | undefined } = {},
   ): Promise<T> {
+    const { signal } = options;
+    if (signal?.aborted) throw browserCancelledError();
+
     const lease = this.profiles.acquire(profileId, jobId);
     const profile = this.profiles.get(profileId);
     let handle: BrowserDriverResult | undefined;
 
     try {
       handle = await this.ensureOpen(profileId);
+
+      // 启动过程无法安全中断，但取消后绝不能进入 callback，也不能遗留未跟踪的后台操作。
+      if (signal?.aborted) throw browserCancelledError();
+
       return await callback({ profileId, context: handle.context });
     } finally {
       // CDP 只在真实任务执行期间 attach；完成后立即断开 Playwright，Chrome 本身保持运行。

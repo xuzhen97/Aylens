@@ -110,6 +110,7 @@ describe("SearchService", () => {
           platform: "test",
           type: "webpage",
           url: "https://example.test",
+          markdown: "# Title\n\nBody",
           retrievedAt: new Date().toISOString(),
           provenance: {
             provider: "fake",
@@ -127,6 +128,8 @@ describe("SearchService", () => {
 
     expect(response.status).toBe("completed");
     expect(response.items).toHaveLength(1);
+    // markdown 是 SearchDocument 的显式契约字段；Zod 会静默剥离未声明字段，必须端到端断言它没丢。
+    expect(response.items[0]?.markdown).toBe("# Title\n\nBody");
     expect(response.meta.providers.fake?.runtimeId).toBe(RUNNER_ID);
   });
 

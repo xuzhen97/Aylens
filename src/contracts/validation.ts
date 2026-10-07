@@ -26,6 +26,7 @@ export const searchDocumentSchema = z.object({
   title: z.string().optional(),
   text: z.string().optional(),
   snippet: z.string().optional(),
+  markdown: z.string().optional(),
   publishedAt: z.string().optional(),
   retrievedAt: z.string(),
   score: z.number().optional(),

@@ -19,6 +19,8 @@ export class Socks5Transport implements HttpTransport {
     try {
       return await nodeRequest(request, this.agent);
     } catch (error) {
+      // 策略、大小、取消与解压错误是确定性结论，不能被包装成可重试的代理故障。
+      if (error instanceof RetrievalError) throw error;
       throw new RetrievalError("PROXY_FAILED", `SOCKS5 proxy request failed: ${this.id}`, {
         retryable: true,
         cause: error,

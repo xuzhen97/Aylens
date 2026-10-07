@@ -1,10 +1,15 @@
 import type { TransportConfig } from "../config/schema.js";
+import { nodeRequest } from "./node-request.js";
 import type { HttpTransport, TransportFactory, TransportRequest, TransportResponse } from "./types.js";
 
 export class DirectTransport implements HttpTransport {
   constructor(public readonly id: string) {}
 
   async request(request: TransportRequest): Promise<TransportResponse> {
+    // 受限获取必须手动处理重定向，并在读取阶段就限流、解压与解码；
+    // fetch 的自动重定向会绕过调用层的逐跳安全校验，因此这里改走 Node 请求路径。
+    if (request.responsePolicy) return nodeRequest(request);
+
     const init: RequestInit = { method: request.method ?? "GET" };
     if (request.headers) init.headers = request.headers;
     if (request.body !== undefined) init.body = request.body;

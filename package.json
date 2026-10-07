@@ -22,27 +22,33 @@
     "typecheck:admin": "pnpm --filter @aylens/admin typecheck",
     "test:admin": "pnpm --filter @aylens/admin test",
     "test:release": "vitest run --config vitest.release.config.ts",
-
     "build": "node scripts/build-release.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "smoke:generic-browser": "tsx scripts/smoke-generic-browser.ts"
+    "smoke:url-fetch": "tsx scripts/smoke-url-fetch.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
     "@fastify/static": "^10.1.5",
+    "@mozilla/readability": "^0.6.0",
     "fastify": "^5.0.0",
     "fflate": "0.8.2",
     "http-proxy-agent": "^9.1.0",
     "https-proxy-agent": "^9.1.0",
+    "linkedom": "^0.18.13",
+    "markdown-it": "^15.0.2",
     "playwright-core": "^1.63.0",
     "socks-proxy-agent": "^10.1.0",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2",
     "ws": "^8.0.0",
     "yaml": "^2.0.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.0.0",
+    "@types/turndown": "^5.0.6",
     "@types/ws": "^8.0.0",
     "esbuild": "0.28.2",
     "tsx": "^4.0.0",

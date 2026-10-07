@@ -1,5 +1,6 @@
 import type WebSocket from "ws";
 import { describe, expect, it, vi } from "vitest";
+import type { ProviderSearchResponse } from "../src/contracts/search.js";
 import { RunnerSessionManager } from "../src/runtime/runner-session-manager.js";
 import type { RuntimeExecutionRequest } from "../src/runtime/types.js";
 
@@ -43,6 +44,55 @@ function jobPhaseMessage(
 }
 
 describe("RunnerSessionManager", () => {
+  it("preserves the optional markdown field across Runner output validation", async () => {
+    const { socket } = createSocket();
+    const manager = new RunnerSessionManager(1000);
+    manager.attach("runner-1", socket);
+
+    const execution = manager.execute<ProviderSearchResponse>("runner-1", searchRequest("exec-markdown"));
+    const provenance = {
+      provider: "provider-1",
+      retrievalMethod: "http",
+      requestId: "request-1",
+      fetchedAt: new Date().toISOString(),
+    };
+
+    manager.handle({
+      type: "JOB_RESULT",
+      messageId: "message-markdown",
+      runnerId: "runner-1",
+      jobId: "job-1",
+      executionId: "exec-markdown",
+      output: {
+        items: [
+          {
+            id: "doc-1",
+            platform: "web",
+            type: "webpage",
+            url: "https://example.test/",
+            markdown: "# Title\n\nBody",
+            retrievedAt: new Date().toISOString(),
+            provenance,
+          },
+          {
+            id: "doc-2",
+            platform: "web",
+            type: "webpage",
+            url: "https://example.test/plain",
+            retrievedAt: new Date().toISOString(),
+            provenance,
+          },
+        ],
+      },
+      timestamp: Date.now(),
+    });
+
+    // Zod 默认会剥离未声明字段；markdown 必须是显式契约的一部分，否则会静默丢失。
+    const result = await execution;
+    expect(result.output.items[0]?.markdown).toBe("# Title\n\nBody");
+    expect(result.output.items[1]?.markdown).toBeUndefined();
+  });
+
   it("preserves known structured error codes returned by a Runner", async () => {
     const { socket } = createSocket();
     const manager = new RunnerSessionManager(1000);

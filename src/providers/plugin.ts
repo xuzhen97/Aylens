@@ -5,7 +5,7 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { strFromU8, unzipSync } from "fflate";
 import type { ProviderFactory } from "./types.js";
-import genericBrowserPlugin from "./generic-browser/index.js";
+import urlFetchPlugin from "./url-fetch/index.js";
 import xSearchPlugin from "./x-search/index.js";
 
 export interface ProviderPlugin {
@@ -29,7 +29,7 @@ interface ProviderPackageManifest {
 }
 
 const BUILTIN_PLUGINS = new Map<string, ProviderPlugin>([
-  ["builtin:generic-browser", genericBrowserPlugin],
+  ["builtin:url-fetch", urlFetchPlugin],
   ["builtin:x-search", xSearchPlugin],
 ]);
 

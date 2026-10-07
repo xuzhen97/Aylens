@@ -6,15 +6,15 @@ auth:
     dev-runner: "${AYLENS_RUNNER_TOKEN:-dev-runner-token}"
 
 providers:
-  generic-browser:
-    type: generic-browser
+  url-fetch:
+    type: url-fetch
   x:
     type: x-search
 
 routes:
   default:
     providers:
-      - generic-browser
+      - url-fetch
   x:
     providers:
       - x

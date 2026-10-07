@@ -10,6 +10,8 @@ export interface BrowserHost {
     profileId: string,
     jobId: string,
     callback: (session: BrowserSession) => Promise<T>,
+    /** 可选取消信号：任务被放弃或超时时，不得再进入 callback，且必须释放 Profile 租约。 */
+    options?: { signal?: AbortSignal | undefined },
   ): Promise<T>;
 
   /**

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Understanding Fenced Code</title>
+  <link rel="canonical" href="/blog/fenced-code">
+</head>
+<body>
+  <header class="site-header"><a href="/">Home</a><a href="/blog">Blog</a></header>
+  <nav class="site-nav"><a href="/nav-a">Nav A</a><a href="/nav-b">Nav B</a></nav>
+  <main>
+    <article>
+      <h1>Understanding Fenced Code</h1>
+      <p>The article body explains how fenced code blocks behave in practice, with enough prose that extraction heuristics treat it as real content.</p>
+      <h2>Steps</h2>
+      <ol>
+        <li>Open the editor
+          <ul>
+            <li>Choose a language</li>
+            <li>Paste the snippet</li>
+          </ul>
+        </li>
+        <li>Run the formatter</li>
+      </ol>
+      <pre><code class="language-ts">const a = 1;
+  const b = 2;</code></pre>
+      <h2>Comparison</h2>
+      <table>
+        <thead><tr><th>Mode</th><th>Keeps structure</th></tr></thead>
+        <tbody><tr><td>article</td><td>sometimes</td></tr><tr><td>full</td><td>yes</td></tr></tbody>
+      </table>
+      <p>Read the <a href="../help">help page</a> for details.</p>
+    </article>
+  </main>
+  <aside class="sidebar"><p>Related posts</p></aside>
+  <footer class="site-footer"><p>Footer junk that must not appear</p></footer>
+</body>
+</html>
