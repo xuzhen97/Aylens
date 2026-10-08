@@ -357,9 +357,25 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 - 页面是否需要登录
 - 页面是否被风控 / 验证码阻断
 
+### 代理配置页读取失败
+
+`Admin → 代理配置` 读取失败时,按报错信息区分三类原因:
+
+| 报错 | 含义 | 排查方向 |
+| --- | --- | --- |
+| `RUNTIME_OFFLINE`(`Runtime is not connected`) | Gateway 未登记该 Runner 的配置通道 | Runner 是否在线;Gateway 启动时是否已接入配置通道 |
+| `CONFIG_UNSUPPORTED`(`Secure connection or proxy config support is required`) | 连接不满足安全或本机例外,**或** Runner 未声明代理配置能力 | 区分二者:检查 Runner 是否经由 HTTPS/WSS 或本机 loopback 连接;检查 Runner 是否走权威启动装载并接入配置库 |
+| 页面 404 | 服务端未注册该页面路由 | 前端路由表与服务端静态页面白名单是否同步 |
+
+区分第二类报错时,先看 Admin 的 Runner 列表是否已展示代理配置能力。仅在能力缺失时才是 Runner 侧未接入;若能力已声明却仍报错,则问题在连接安全判定,属于非本机明文连接,按设计本就拒绝配置写入。
+
+代理配置页面返回 503(`Admin frontend is not built`)属于另一回事:前端产物缺失,执行 `pnpm build:admin` 后**重启 Gateway**,静态资源根目录在启动时一次性解析,仅构建不重启不生效。
+
+这四类故障的共同成因是启动装配未接上而非业务逻辑异常,详见 [ADR-2026-10-08](./adr/2026-10-08-startup-assembly-dependency-optionality.md)。
+
 ### 代理失败
 
-区分：
+区分:
 
 - Proxy 连接失败
 - 目标站失败
@@ -381,7 +397,8 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 8. `pnpm smoke:url-fetch` 通过（策略拒绝回环/私网 + 离线 fixture 提取）；
 9. 人工登录后 authenticated page 能读取；
 10. Runner 重启后 persistent profile 登录态仍存在；
-11. Admin UI 不暴露 API Key、Runner Token、代理密码、本地 Chrome 路径。
+11. Admin UI 不暴露 API Key、Runner Token、代理密码、本地 Chrome 路径；
+12. `Admin → 代理配置` 能读取到 Runner 的代理与绑定，且写入后版本号递增、重启 Runner 后仍然保留。
 
 ### 生命周期保障
 
