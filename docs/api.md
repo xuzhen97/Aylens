@@ -163,9 +163,17 @@ src/api/mcp/tools.ts
 
 ```text
 search
+get_status
 list_runtimes
+list_providers
+get_overview
+get_audit
+check_provider_auth
+login_provider_auth
 ```
 
-这些工具复用同一个 Gateway Context / SearchService。
+这些工具复用同一个 Gateway Context / SearchService。`login_provider_auth` 与 `get_overview` 分别对应真实副作用与 `/v1/admin/overview`。
+
+这组定义与 VCPToolBox 插件 AylensBridge 的命令集由 `test/vcp-plugin-contract.test.ts` 双向绑定：两边命令集或参数名不一致时测试会失败。插件侧的安装、配置与命令说明见 [vcp-plugin.md](./vcp-plugin.md)。
 
 当前仓库还没有接入完整 MCP SDK server / wire transport，所以不要把 adapter 定义误认为已经存在一个可独立连接的 MCP Server。
