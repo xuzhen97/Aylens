@@ -15,6 +15,8 @@ POST /v1/providers/:providerId/auth/login
 GET  /v1/runtimes
 GET  /v1/audit/:requestId
 GET  /v1/admin/overview
+GET  /v1/admin/runners/:runnerId/proxy-config
+POST /v1/admin/runners/:runnerId/proxy-config
 POST /v1/admin/session/login
 GET  /v1/admin/session
 POST /v1/admin/session/logout
@@ -32,6 +34,7 @@ Runner WebSocket：
 /admin
 /admin/runtimes
 /admin/providers
+/admin/proxies
 /admin/profiles
 /admin/audits
 /admin/tester
@@ -68,7 +71,7 @@ Admin 登录使用 `POST /v1/admin/session/login`，请求 JSON `{ "apiKey": "<�
 
 `GET /v1/admin/session` 探测当前会话；`POST /v1/admin/session/logout` 需同源 Origin 和 `X-CSRF-Token`，成功后撤销并清除 Cookie。所有 session 响应使用 no-store。
 
-Cookie 会话只授权 `GET /v1/admin/overview`、`POST /v1/search` 和 Provider auth login/check 指定路由。所有写请求校验精确 Origin 与 CSRF。`Authorization: Bearer` 认证和 Runner Token 不受 Cookie 影响；无效 Bearer 绝不回退到 Cookie。
+Cookie 会话只授权 `GET /v1/admin/overview`、`POST /v1/search`、Provider auth login/check,以及 `GET/POST /v1/admin/runners/:runnerId/proxy-config` 指定路由。所有写请求校验精确 Origin 与 CSRF。`Authorization: Bearer` 认证和 Runner Token 不受 Cookie 影响;无效 Bearer 绝不回退到 Cookie。
 
 通过 HTTPS 部署可设置 Secure Cookie。TLS 反向代理需显式设置 `server.publicOrigin`，并限制 `server.trustProxy` 到实际代理 IP/CIDR。生产环境必须在 HTTPS 下使用管理登录。
 
@@ -124,15 +127,29 @@ POST /v1/providers/:providerId/auth/login
 GET /v1/audit/:requestId
 ```
 
-当前 Audit 是内存实现，Gateway 重启后记录不会保留。
+Audit 持久化在 Gateway 本地 SQLite:写入前脱敏(HTTP URL 去除用户信息、全部查询参数与 fragment,摘要最多 500 字符),默认保留 30 天;重启后遗留的运行中请求标记为 `interrupted`。响应使用与存储相同的安全数据,不含未保存的原始查询。
 
-后台使用：
+后台使用:
 
 ```text
 GET /v1/admin/overview
 ```
 
 返回经过脱敏的 Gateway summary、Provider、Runtime 与最近 Audit。
+
+## Runner 代理配置
+
+```text
+GET  /v1/admin/runners/:runnerId/proxy-config
+POST /v1/admin/runners/:runnerId/proxy-config
+```
+
+仅允许操作在线且支持配置通道(`capabilities.proxyConfig`)的 Runner;携带凭据的写入要求 HTTPS + WSS(loopback 开发连接例外)。
+
+- GET 返回脱敏安全视图:代理 ID、类型、非凭据地址、是否配置认证、Provider/Profile 引用、配置版本;
+- POST 接受一次原子修改(put/delete/bind),携带 `operationId` 与 `expectedVersion`;版本过期返回 409 `CONFIG_VERSION_CONFLICT`,代理被引用返回 409 `CONFIG_IN_USE`,无效请求返回 400,Runner 离线/不支持/结果待确认返回 503。
+
+凭据仅写入:查询不返回原值;编辑支持保留、替换或清除。连接中断或回执超时时返回 `CONFIG_RESULT_UNKNOWN`(结果待确认),应重新读取配置核对,不要盲目重发。HTTP 代理修改后新任务立即生效;浏览器 Profile 引用的代理需重启对应 Chrome 才能生效。
 
 ## MCP 当前状态
 

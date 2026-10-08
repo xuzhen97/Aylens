@@ -185,13 +185,28 @@ providers:
 
 ## 8. 验证 Runner 重启后持久化
 
-如果使用 persistent profile：
+### 代理配置(SQLite)
 
-1. 完成人工登录；
-2. 停止 Runner；
-3. 不删除 Profile 目录；
-4. 重新启动 Runner；
-5. 请求 authenticated page；
+Runner 代理与 Provider 传输绑定持久化在本地 SQLite(`AYLENS_RUNNER_DB`,默认 `.data/runners/<runner-id>.sqlite`):
+
+1. 首次启动时从 YAML 一次性导入;此后数据库是唯一来源,YAML 不再覆盖;
+2. 在 Admin → 代理配置 页面修改代理;
+3. 重启 Runner;
+4. 确认界面修改仍然存在,旧 YAML 中的代理已不再生效。
+
+数据库无法打开或迁移失败时 Runner 会明确报错退出——不要用空库掩盖故障;恢复请从备份还原,不要删除数据库文件重新导入。
+
+Gateway 审计同样持久化(`AYLENS_GATEWAY_DB`,默认 `.data/gateway.sqlite`),重启后历史请求仍可查询;遗留的运行中请求标记为 interrupted,默认保留 30 天。
+
+### 浏览器登录态(Chrome Profile)
+
+如果使用 persistent profile:
+
+1. 完成人工登录;
+2. 停止 Runner;
+3. 不删除 Profile 目录;
+4. 重新启动 Runner;
+5. 请求 authenticated page;
 6. 验证登录态仍然存在。
 
 如果不存在，重点排查：

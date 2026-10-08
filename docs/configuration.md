@@ -8,13 +8,37 @@ Gateway：
 config/aylens.yaml
 ```
 
-Runner：
+Runner:
 
 ```text
 config/runner.yaml
 ```
 
-默认配置（`config/aylens.yaml` / `config/runner.yaml`）已接入 url-fetch，
+## 数据库(Runner 代理配置 / Gateway 审计)
+
+Gateway 与 Runner 各自使用独立本地 SQLite(Node 24 `node:sqlite`),路径通过环境变量配置:
+
+```text
+AYLENS_GATEWAY_DB   # 默认 ./.data/gateway.sqlite
+AYLENS_RUNNER_DB    # 默认 ./.data/runners/<runner-id>.sqlite
+```
+
+- Runner 首次启动会从 YAML 一次性导入代理(transports)与 Provider 传输绑定;此后这些字段以数据库为唯一来源,YAML 不再覆盖。修改代理请在 Admin → 代理配置 页面操作。
+- 未迁移字段(Provider options、Browser Profile、插件、启动连接配置)继续由 YAML 提供。
+- Gateway SQLite 保存脱敏请求审计与配置操作记录,默认保留 30 天;重启后遗留的运行中请求标记为 interrupted。
+- 数据库无法打开或迁移失败时 Runner/Gateway 会明确报错退出,不静默回退 YAML。
+- Runner 数据库包含代理凭据。SQLite 不提供静态加密,数据库目录与备份必须按敏感文件保护(建议将 `AYLENS_RUNNER_DB` 指向受 ACL 保护的稳定数据目录,而不是 release 目录——release 重建会删除该目录)。
+
+生产建议:
+
+```text
+AYLENS_GATEWAY_DB=/stable-data/gateway.sqlite
+AYLENS_RUNNER_DB=/stable-data/runner.sqlite
+```
+
+Admin 代理配置页仅允许修改在线 Runner;携带凭据的远程配置操作要求 HTTPS + WSS(loopback 开发连接例外)。HTTP 代理修改后新任务立即生效;浏览器 Profile 引用的代理修改后需重启对应 Chrome 才能生效。
+
+默认配置(`config/aylens.yaml` / `config/runner.yaml`)已接入 url-fetch,
 开箱即用——HTTP 阶段默认走 `proxy-main`，不启动浏览器也能使用代理。
 可通过环境变量覆盖配置文件位置：
 
@@ -192,7 +216,7 @@ socks5://
 socks5h://
 ```
 
-代理凭据应留在 Runtime 本地环境变量，不通过 Gateway 下发。
+代理凭据保存在 Runner 本地 SQLite(见上文数据库一节);通过 Admin → 代理配置 页面在线修改,支持保留、替换或清除凭据。凭据不通过 Gateway 持久化或下发。
 
 ## Browser Profile（Runner 配置）
 

@@ -321,23 +321,27 @@ Admin 只展示逻辑配置和 Runner 上报的安全状态。支持认证控制
 
 ## 13. Audit 与状态存储
 
-Audit 当前是内存实现：
+Gateway 使用本地 SQLite(`node:sqlite`)持久化:
 
-- Gateway 重启后 Audit 不保留；
-- Runtime Registry 是当前 Gateway 进程内状态；
-- Browser Profile 和登录态持久化在 Runner 本地 `userDataDir`。
+- 脱敏请求审计与 Provider 执行事件:写入前脱敏(HTTP URL 去除用户信息、全部查询参数与 fragment,摘要最多 500 字符),默认保留 30 天,分批清理;重启后遗留 running 请求标记为 interrupted;
+- 脱敏配置操作记录:仅含目标、类型、时间与结果,不含凭据或修改内容。
 
-项目当前不依赖数据库、Redis 或对象存储。
+Runner 使用独立本地 SQLite 保存代理配置与 Provider 传输绑定;首次启动从 YAML 一次性导入,此后数据库是唯一来源,YAML 不再覆盖。未迁移字段(Provider 参数、Browser Profile、插件、启动连接配置)继续由 YAML 提供。
+
+数据库路径通过 `AYLENS_GATEWAY_DB` / `AYLENS_RUNNER_DB` 配置,默认 `.data/`。数据库无法打开或迁移失败时明确报错,不静默退回 YAML 或内存实现。Runner 数据库含代理凭据,目录与备份必须按敏感文件保护。
+
+Runtime Registry 仍是 Gateway 进程内状态;Browser Profile 和登录态持久化在 Runner 本地 `userDataDir`。项目不依赖外部数据库服务。
 
 ## 14. 安全边界
 
-固定安全边界：
+固定安全边界:
 
-- Gateway API 使用 API Key；
-- Runner 使用独立 token 连接 Gateway；
-- Provider 执行只发生在 Runner；
-- Proxy credential 只存在 Runner；
-- Cookie、Local Storage、Browser Profile 只存在 Runner；
+- Gateway API 使用 API Key;
+- Runner 使用独立 token 连接 Gateway;
+- Provider 执行只发生在 Runner;
+- 代理凭据持久保存于 Runner 本地 SQLite;Gateway 仅在 Admin 配置操作中短暂转发凭据,不持久化、不回显、不写入日志或审计;
+- 携带凭据的远程配置操作要求 HTTPS + WSS(loopback 开发例外);
+- Cookie、Local Storage、Browser Profile 只存在 Runner;
 - Admin API 对敏感字段做隐藏或脱敏；
 - `url-fetch` 只接受 HTTP/HTTPS、拒绝 URL 内嵌 credential，并默认只允许公网目标（环回 / 私网 / 链路本地一律拒绝，无 allowPrivate 开关）；代理与浏览器兜底需要部署方显式声明出口已受控。
 
