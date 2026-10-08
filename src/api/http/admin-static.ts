@@ -12,6 +12,7 @@ const ADMIN_PAGES = [
   "/admin/runtimes",
   "/admin/providers",
   "/admin/profiles",
+  "/admin/proxies",
   "/admin/audits",
   "/admin/tester",
 ] as const;

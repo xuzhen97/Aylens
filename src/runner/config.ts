@@ -193,12 +193,17 @@ function buildRunnerStartup(
   databasePath: string,
 ): RunnerStartup {
   const store = new ProxyConfigStore(database);
+  const state = store.read();
 
   let effectiveRaw: Record<string, unknown> = raw;
   if (initialized) {
-    // 数据库是唯一来源:先剔除已迁移字段,再做环境变量插值与 schema 校验。
+    // 数据库是唯一来源:代理段直接用库内值替换 YAML(而不是删除),否则 YAML 里
+    // browserProfiles.*.transport 之类的引用会指向已被迁移走的代理而在 schema 校验处报
+    // “Unknown Runner-local transport”;provider 绑定稍后由 state.bindings 覆盖,这里先剔除。
     const remaining: Record<string, unknown> = { ...raw };
-    delete remaining.transports;
+    // SAFETY: state.transports 由同一 transportSchema 导入/写入,结构一致;
+    // 绕开 Record 推断仅为复用 schema 校验。
+    remaining.transports = state.transports as unknown as Record<string, unknown>;
     const providers = { ...((remaining.providers as Record<string, Record<string, unknown>> | undefined) ?? {}) };
     for (const value of Object.values(providers)) delete value.transport;
     if (Object.keys(providers).length > 0) remaining.providers = providers;
@@ -208,22 +213,23 @@ function buildRunnerStartup(
 
   const config = runnerConfigSchema.parse(effectiveRaw);
   store.initialize(config);
-  const state = store.read();
+  // initialize 是幂等的:首次启动在此导入 YAML,已初始化时为空操作,state 仍为权威值。
+  const initializedState = initialized ? state : store.read();
   // 数据库代理与绑定组装回有效运行配置;YAML Profile transport 必须引用数据库中存在的代理。
   // SAFETY: state.bindings 与 state.transports 由同一 transportSchema 导入/写入,结构一致;
   // 绕开 Record 推断仅为复用 schema 校验。
   const deployments = Object.fromEntries(
     Object.entries(config.providers).map(([id, deployment]) => {
-      const binding = state.bindings[id];
+      const binding = initializedState.bindings[id];
       if (!binding) return [id, deployment] as const;
       return [id, { ...deployment, transport: binding } as typeof deployment] as const;
     }),
   );
   const assembled = runnerConfigSchema.parse({
     ...config,
-    // SAFETY: state.transports 由同一 transportSchema 导入/写入,结构一致;
+    // SAFETY: initializedState.transports 由同一 transportSchema 导入/写入,结构一致;
     // 绕开 Record 推断仅为复用 schema 校验。
-    transports: state.transports as unknown as RunnerConfig["transports"],
+    transports: initializedState.transports as unknown as RunnerConfig["transports"],
     providers: deployments,
   });
 

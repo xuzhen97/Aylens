@@ -28,7 +28,13 @@ export function attachRunnerGateway(options: {
   heartbeatTimeoutMs: number;
   runtimes: RuntimeRegistry;
   sessions: RunnerSessionManager;
-  configChannel?: RunnerConfigChannel;
+  /**
+   * 配置通道是必备依赖而非可选能力:Runner 注册与心跳都必须在此登记 socket,
+   * 否则 `/admin/proxies` 的读取请求永远命中不了任何会话(表现为 RUNTIME_OFFLINE)。
+   * 「Runner 侧不支持代理配置」是另一种事实,由 capabilities.proxyConfig 上报,
+   * 在 request() 时按 CONFIG_UNSUPPORTED 拒絶——那不是缺少通道。
+   */
+  configChannel: RunnerConfigChannel;
   trustedProxies?: readonly string[];
 }): WebSocketServer {
   const wss = new WebSocketServer({ server: options.app.server, path: options.path });
@@ -92,12 +98,10 @@ export function attachRunnerGateway(options: {
           lastSeenAt: Date.now(),
         });
         options.sessions.attach(message.runnerId, socket);
-        if (options.configChannel) {
-          options.configChannel.attach(message.runnerId, socket, {
-            secureOrLocal,
-            supportsProxyConfig: message.capabilities.proxyConfig === true,
-          });
-        }
+        options.configChannel.attach(message.runnerId, socket, {
+          secureOrLocal,
+          supportsProxyConfig: message.capabilities.proxyConfig === true,
+        });
 
         socket.send(JSON.stringify({
           type: "REGISTERED",
@@ -124,16 +128,15 @@ export function attachRunnerGateway(options: {
           capacity: message.capacity,
           lastSeenAt: Date.now(),
         });
-        if (options.configChannel) {
-          options.configChannel.attach(runnerId, socket, {
-            secureOrLocal,
-            supportsProxyConfig: message.capabilities.proxyConfig === true,
-          });
-        }
+        // 心跳同时刷新能力声明:同一 socket 下attach 只覆盖 metadata,不重建会话。
+        options.configChannel.attach(runnerId, socket, {
+          secureOrLocal,
+          supportsProxyConfig: message.capabilities.proxyConfig === true,
+        });
         return;
       }
 
-      if (options.configChannel && (message.type === "CONFIG_RESULT" || message.type === "CONFIG_ERROR")) {
+      if (message.type === "CONFIG_RESULT" || message.type === "CONFIG_ERROR") {
         options.configChannel.handle(message);
         return;
       }
@@ -145,7 +148,7 @@ export function attachRunnerGateway(options: {
       if (!runnerId) return;
       const detached = options.sessions.detach(runnerId, socket);
       if (detached) options.runtimes.markOffline(runnerId);
-      options.configChannel?.detach(runnerId, socket);
+      options.configChannel.detach(runnerId, socket);
     });
 
     socket.on("error", () => {

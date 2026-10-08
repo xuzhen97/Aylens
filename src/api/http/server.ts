@@ -130,6 +130,8 @@ export function buildHttpServer(context: GatewayContext, options: Pick<FastifySe
     heartbeatTimeoutMs: context.config.runtimeRegistry.heartbeatTimeoutMs,
     runtimes: context.runtimes,
     sessions: context.runnerSessions,
+    // 必须透传配置通道,否则 Runner socket 不会 attach,代理配置读取恒为 RUNTIME_OFFLINE。
+    configChannel: context.configChannel,
   });
 
   return app;
