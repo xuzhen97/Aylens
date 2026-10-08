@@ -1,5 +1,10 @@
 node_modules/
-dist/
+# 构建产物目录整体忽略；dist/AylensBridge.zip 是 VCPToolBox 商店的安装载荷，必须入库。
+# 必须写成 dist/* 而不是 dist/——目录级 ignore 会让后面的白名单失效（git 根本不会进入该目录）。
+dist/*
+!dist/AylensBridge.zip
+# 各 workspace 包的构建产物（tsc/esbuild 输出，可重新构建，不入库）
+packages/*/dist/
 release/
 .tmp/
 apps/admin/dist/

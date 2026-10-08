@@ -149,6 +149,24 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.19.0)(jiti@2.7.0)(jsdom@25.0.1(supports-color@7.1.0))(lightningcss@1.32.0)(supports-color@7.1.0)(tsx@4.23.15)(yaml@2.9.1)
 
+  packages/vcp-plugin:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.0
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      fflate:
+        specifier: 0.8.2
+        version: 0.8.2
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.19.0)(jiti@2.7.0)(jsdom@25.0.1(supports-color@7.1.0))(lightningcss@1.32.0)(supports-color@7.1.0)(tsx@4.23.15)(yaml@2.9.1)
+
 packages:
 
   '@adobe/css-tools@4.5.0':

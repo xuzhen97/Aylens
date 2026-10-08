@@ -1,0 +1,15 @@
+{
+  "plugins": [
+    {
+      "name": "AylensBridge",
+      "displayName": "Aylens 检索网关连接桥",
+      "description": "连接 Aylens Gateway：统一互联网检索（url-fetch / x-search）、Gateway 与 Runner 状态、Provider 清单。synchronous/stdio 架构，零 npm 依赖。",
+      "version": "0.1.0",
+      "author": "xuzhen97",
+      "category": "information-retrieval",
+      "icon": "search",
+      "path": "plugins/aylens",
+      "downloadUrl": "https://ghproxy.net/https://raw.githubusercontent.com/xuzhen97/Aylens/main/dist/AylensBridge.zip"
+    }
+  ]
+}

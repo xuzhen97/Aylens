@@ -1,0 +1,85 @@
+{
+  "manifestVersion": "2.0.0",
+  "name": "AylensBridge",
+  "displayName": "Aylens 检索网关连接桥",
+  "version": "0.1.0",
+  "description": "连接 Aylens Gateway：统一互联网检索（url-fetch / x-search）、Gateway / Runner / Provider 状态与登录态、检索审计查询。synchronous/stdio 架构，零 npm 依赖。",
+  "author": "xuzhen97",
+  "icon": "search",
+  "category": "information-retrieval",
+  "pluginType": "synchronous",
+  "entryPoint": {
+    "type": "nodejs",
+    "command": "node index.cjs"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 120000
+  },
+  "configSchema": {
+    "AYLENS_BASE_URL": {
+      "type": "string",
+      "description": "Aylens Gateway 的基础 URL（如 http://127.0.0.1:3000 或 https://aylens.yourdomain.com）",
+      "default": "http://127.0.0.1:3000"
+    },
+    "AYLENS_API_KEY": {
+      "type": "string",
+      "description": "Aylens Gateway 的 Bearer API Key（config/aylens.yaml 的 auth.apiKey）",
+      "default": ""
+    },
+    "REQUEST_TIMEOUT_MS": {
+      "type": "number",
+      "description": "请求超时时间（毫秒）。url-fetch 可能触发浏览器兜底，过小会误报超时",
+      "default": 120000
+    },
+    "AYLENS_ALLOW_AUTH_LOGIN": {
+      "type": "string",
+      "description": "是否允许 LoginProviderAuth（会在 Runner 上拉起可见 Chrome）。默认 false",
+      "default": "false"
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "Search",
+        "description": "功能: 通过 Aylens Gateway 执行统一互联网检索（url-fetch / x-search 等 Provider），返回标题、URL、来源与正文 Markdown。\n`command` 固定为 `Search`，不得填写 URL、路径或自然语言。\n`query` 是检索内容本体：抓取指定网页时直接写该 URL；X 检索时写 X 检索式。\n`sources` 可显式指定 Provider 实例（逗号分隔），`route` 可指定 Gateway 路由名，二者都不填则走默认路由。\n`limit` 为期望条数（1-100），`language` 为语言偏好。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」Search「末」,\nquery:「始」https://example.com「末」,\nsources:「始」url-fetch「末」,\nlimit:「始」5「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetStatus",
+        "description": "功能: 查看 Aylens Gateway 健康状态与在线 Runner 数量，用于判断检索是否具备执行节点。\n`command` 固定为 `GetStatus`，不得填写其他内容。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」GetStatus「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetOverview",
+        "description": "功能: 获取 Gateway 总览：Provider 清单与登录态、Runner、浏览器 Profile、最近审计。排查「检索不好用」先看这里。\n`command` 固定为 `GetOverview`，不得填写其他内容。\n`recentAuditLimit` 可限制列出的近期审计条数。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」GetOverview「末」,\nrecentAuditLimit:「始」5「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListRuntimes",
+        "description": "功能: 列出已连接 Runner 节点的状态、容量、Provider 能力、浏览器与 Profile。\n`command` 固定为 `ListRuntimes`，不得填写其他内容。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」ListRuntimes「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ListProviders",
+        "description": "功能: 列出 Gateway 已配置的 Provider 实例（id / type / enabled / runtime），用于确定 Search 的 sources 取值。\n`command` 固定为 `ListProviders`，不得填写其他内容。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」ListProviders「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "CheckProviderAuth",
+        "description": "功能: 检查指定 Provider 的人工登录态（无副作用）。返回 authenticated / auth_required / unknown 与当前账号。\n`command` 固定为 `CheckProviderAuth`，不得填写其他内容；`providerId` 用 ListProviders 返回的 id。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」CheckProviderAuth「末」,\nproviderId:「始」x「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "LoginProviderAuth",
+        "description": "功能: 在 Runner 上拉起一个可见 Chrome 并打开该 Provider 的登录页（**强副作用**，会打断同 Profile 的进行中任务，且不等待登录完成）。\n默认关闭，需在插件 config.env 设 AYLENS_ALLOW_AUTH_LOGIN=true 才可用。\n`command` 固定为 `LoginProviderAuth`，不得填写其他内容；`providerId` 为目标 Provider，`confirm` 必须与 `providerId` 完全相同作为二次确认。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」LoginProviderAuth「末」,\nproviderId:「始」x「末」,\nconfirm:「始」x「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetAudit",
+        "description": "功能: 按 requestId 查看单次检索的审计明细（状态、耗时、每个 Provider 的成败与错误码）。\n`command` 固定为 `GetAudit`，不得填写其他内容；`requestId` 来自 Search 返回的 requestId 或 GetOverview 的近期审计列表。",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」AylensBridge「末」,\ncommand:「始」GetAudit「末」,\nrequestId:「始」req-xxxxxxxx「末」,\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}
