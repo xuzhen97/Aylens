@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import { appConfigSchema } from "../src/config/schema.js";
 import { createGatewayContext } from "../src/app/context.js";
 import { buildHttpServer } from "../src/api/http/server.js";
+import { openSqlite } from "../src/storage/sqlite.js";
+import { gatewayMigrations } from "../src/storage/gateway-migrations.js";
 
 
 let app: FastifyInstance | undefined;
@@ -68,7 +70,7 @@ function createAdminServer() {
     },
   });
 
-  const context = createGatewayContext(config);
+  const context = createGatewayContext(config, { database: openSqlite(":memory:", gatewayMigrations) });
   context.audit.start(
     "request-admin-test",
     "trace-admin-test",
@@ -235,7 +237,8 @@ describe("admin UI", () => {
     expect(body).not.toContain("audit-secret-token");
 
     const payload = overview.json();
-    expect(payload.audits[0].request.query).toContain("token=***");
+    // 持久化层写入前脱敏:URL 用户信息、全部查询参数与 fragment 已被移除,不再保留 token=*** 占位。
+    expect(payload.audits[0].request.query).toBe("https://example.com/account");
     expect(payload.providers[0].runtime.selector.labels).toEqual({
       apiToken: "***",
       region: "test",
@@ -249,7 +252,7 @@ describe("admin UI", () => {
       providers: { x: { type: "x-search" } },
       routes: { default: { providers: [] } },
     });
-    const context = createGatewayContext(config);
+    const context = createGatewayContext(config, { database: openSqlite(":memory:", gatewayMigrations) });
     context.runtimes.upsert({
       id: "x-runner",
       hostname: "x-host",

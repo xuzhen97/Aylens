@@ -6,7 +6,7 @@ import type { AdminSessionStore } from "./admin-session.js";
 
 export class AdminHttpError extends Error {
   constructor(
-    readonly statusCode: 400 | 401 | 403 | 429 | 503,
+    readonly statusCode: 400 | 401 | 403 | 409 | 429 | 503,
     readonly code: string,
     message: string,
     readonly retryAfterSeconds?: number,
@@ -77,6 +77,8 @@ const COOKIE_AUTH_ROUTES = new Set([
   "POST /v1/search",
   "POST /v1/providers/:providerId/auth/login",
   "POST /v1/providers/:providerId/auth/check",
+  "GET /v1/admin/runners/:runnerId/proxy-config",
+  "POST /v1/admin/runners/:runnerId/proxy-config",
 ]);
 
 export function authenticateAdminOrBearer(

@@ -9,6 +9,8 @@ import {
 } from "./protocol.js";
 import type { RuntimeRegistry } from "./registry.js";
 import type { RunnerSessionManager } from "./runner-session-manager.js";
+import { upgradeIsSecureOrLocal } from "../api/http/config-channel-security.js";
+import type { RunnerConfigChannel } from "./runner-config-channel.js";
 
 function safeTokenEqual(expected: string, actual: string): boolean {
   const a = Buffer.from(expected);
@@ -21,17 +23,27 @@ export function attachRunnerGateway(options: {
   path: string;
   tokens: Record<string, string>;
   /**
-   * Runner 最长允许多久不发送心跳；超过该时间后，新连接可以接管相同 ID。   * 这样可以避免异常崩溃且未关闭 Socket 的 Runner 永久阻止替代实例上线。
+   * Runner 最长允许多久不发送心跳;超过该时间后,新连接可以接管相同 ID。   * 这样可以避免异常崩溃且未关闭 Socket 的 Runner 永久阻止替代实例上线。
    */
   heartbeatTimeoutMs: number;
   runtimes: RuntimeRegistry;
   sessions: RunnerSessionManager;
+  configChannel?: RunnerConfigChannel;
+  trustedProxies?: readonly string[];
 }): WebSocketServer {
   const wss = new WebSocketServer({ server: options.app.server, path: options.path });
 
   wss.on("connection", (socket, request) => {
     const authorization = request.headers.authorization ?? "";
     const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+    // 配置通道的安全判定:按实际 TCP/TLS 与可信代理判断,不接受 Runner 自报。
+    const secureOrLocal = upgradeIsSecureOrLocal({
+      socketRemoteAddress: request.socket.remoteAddress,
+      headers: request.headers,
+      // SAFETY: ws 在 TLS socket 上提供 encrypted 布尔属性,但 @types/node 的 net.Socket 类型未声明;
+    // 这里只读该属性判断是否为 TLS 直连,不做任何写入。
+    isTls: (request.socket as unknown as { encrypted?: boolean }).encrypted === true,
+    }, options.trustedProxies ?? []);
 
     let runnerId: string | undefined;
 
@@ -80,6 +92,12 @@ export function attachRunnerGateway(options: {
           lastSeenAt: Date.now(),
         });
         options.sessions.attach(message.runnerId, socket);
+        if (options.configChannel) {
+          options.configChannel.attach(message.runnerId, socket, {
+            secureOrLocal,
+            supportsProxyConfig: message.capabilities.proxyConfig === true,
+          });
+        }
 
         socket.send(JSON.stringify({
           type: "REGISTERED",
@@ -106,6 +124,17 @@ export function attachRunnerGateway(options: {
           capacity: message.capacity,
           lastSeenAt: Date.now(),
         });
+        if (options.configChannel) {
+          options.configChannel.attach(runnerId, socket, {
+            secureOrLocal,
+            supportsProxyConfig: message.capabilities.proxyConfig === true,
+          });
+        }
+        return;
+      }
+
+      if (options.configChannel && (message.type === "CONFIG_RESULT" || message.type === "CONFIG_ERROR")) {
+        options.configChannel.handle(message);
         return;
       }
 
@@ -116,6 +145,7 @@ export function attachRunnerGateway(options: {
       if (!runnerId) return;
       const detached = options.sessions.detach(runnerId, socket);
       if (detached) options.runtimes.markOffline(runnerId);
+      options.configChannel?.detach(runnerId, socket);
     });
 
     socket.on("error", () => {

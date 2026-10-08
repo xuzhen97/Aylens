@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogOut, Moon, RefreshCw, Server, Sun, Search, Puzzle, PanelsTopLeft, FileClock } from "lucide-react";
+import { LayoutDashboard, LogOut, Moon, RefreshCw, Server, Sun, Search, Puzzle, PanelsTopLeft, FileClock, Network } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useSession } from "../auth/session-context";
 import { useOverview } from "../hooks/use-overview";
@@ -10,6 +10,7 @@ const navigation = [
   { to: "/", label: "系统总览", icon: LayoutDashboard, end: true },
   { to: "/runtimes", label: "Runtime / Runner", icon: Server },
   { to: "/providers", label: "Providers", icon: Puzzle },
+  { to: "/proxies", label: "代理配置", icon: Network },
   { to: "/profiles", label: "Browser Profiles", icon: PanelsTopLeft },
   { to: "/audits", label: "检索审计", icon: FileClock },
   { to: "/tester", label: "请求测试", icon: Search },

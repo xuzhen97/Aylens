@@ -19,6 +19,17 @@ export class ChromeProfileHost implements BrowserHost {
     private readonly driver: BrowserDriver = new PlaywrightChromeDriver(),
   ) {}
 
+  /**
+   * 返回绑定到指定 Registry 的轻量 facade:共享同一 ProfileManager、driver、
+   * opened/opening 缓存与 lease 生命周期,仅在打开浏览器时使用快照内的代理配置。
+   * 已打开的 Chrome 不受影响,也不会因快照切换被关闭。
+   */
+  forTransports(transports: TransportRegistry): BrowserHost {
+    const facade = Object.create(this) as ChromeProfileHost;
+    Object.defineProperty(facade, "transports", { value: transports });
+    return facade;
+  }
+
   async withProfile<T>(
     profileId: string,
     jobId: string,

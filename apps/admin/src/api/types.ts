@@ -103,6 +103,7 @@ export type AdminOverview = {
         transport: string;
       }>;
       providerStates?: Record<string, AdminOverview["providers"][number]["auth"]>;
+      proxyConfig?: boolean;
       http: boolean;
       browserAutomation: boolean;
     };

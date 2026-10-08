@@ -5,6 +5,7 @@ import type { RunnerRuntime } from "./runtime.js";
 import { createId } from "../shared/ids.js";
 import { RetrievalError, toErrorPayload } from "../core/errors.js";
 import { searchRequestSchema } from "../contracts/validation.js";
+import { ProxyConfigError } from "./proxy-config-service.js";
 import {
   gatewayToRunnerSchema,
   RUNNER_PROTOCOL_VERSION,
@@ -107,6 +108,11 @@ export class AylensRunner {
 
         if (message.type === "EXECUTE") {
           void this.handleExecute(socket, message);
+          return;
+        }
+
+        if (message.type === "CONFIG_REQUEST") {
+          void this.handleConfigRequest(socket, message);
           return;
         }
 
@@ -256,7 +262,11 @@ export class AylensRunner {
     }));
 
     try {
-      const deployment = this.runtime.deployments[message.providerId];
+      // 任务开始时取得一次不可变快照:deployment/transports/browser 全部来自同一版本,
+      // 配置切换不影响进行中的任务,也不会读到混合状态。
+      const snapshot = this.runtime.captureExecution();
+
+      const deployment = snapshot.deployments[message.providerId];
       if (!deployment) {
         throw new Error(`Provider deployment is not configured on this Runner: ${message.providerId}`);
       }
@@ -270,8 +280,8 @@ export class AylensRunner {
         message.providerId,
         deployment,
         {
-          transports: this.runtime.transports,
-          browser: this.runtime.browser,
+          transports: snapshot.transports,
+          browser: snapshot.browser,
           defaultBrowserProfile: this.config.browser.defaultProfile,
           reportAuthState: (state) => this.runtime.reportProviderAuthState(message.providerId, state),
         },
@@ -419,9 +429,73 @@ export class AylensRunner {
         transport: profile.transport ?? (profile.mode === "cdp" ? "browser/system" : "direct"),
       })),
       providerStates: Object.fromEntries(this.runtime.providerAuthStates.entries()),
-      // Transport 与 Browser capability 来自 Runner 实际构建成功的本地资源，避免配置声明与真实能力漂移。
+      // Transport 与 Browser capability 来自 Runner 实际构建成功的本地资源,避免配置声明与真实能力漂移。
       http: true,
       browserAutomation: profiles.length > 0,
+      // 仅在接入权威配置库的新 Runner 上声明;旧 Runner 缺省 false,Gateway 拒绝向其发送配置消息。
+      proxyConfig: this.runtime.proxyConfig !== undefined,
     };
+  }
+
+  /**
+   * 处理 Gateway 的配置请求:write 前先检查自身连接安全(loopback ws 或 wss),
+   * 再调用代理配置服务;响应只含脱敏视图或固定安全错误。
+   */
+  private async handleConfigRequest(
+    socket: WebSocket,
+    message: Extract<ReturnType<typeof gatewayToRunnerSchema.parse>, { type: "CONFIG_REQUEST" }>,
+  ): Promise<void> {
+    const reply = (payload: Record<string, unknown>) => {
+      socket.send(JSON.stringify({
+        ...payload,
+        messageId: createId("msg"),
+        requestId: message.requestId,
+        runnerId: this.config.runner.id,
+        timestamp: Date.now(),
+      }));
+    };
+
+    const service = this.runtime.proxyConfig;
+    if (!service) {
+      reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "This runner does not support proxy configuration" } });
+      return;
+    }
+
+    if (message.kind === "write") {
+      let gatewayUrl: URL;
+      try {
+        gatewayUrl = new URL(this.config.runner.gatewayUrl);
+      } catch {
+        reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "Runner gateway URL is invalid" } });
+        return;
+      }
+      const isLocalWs = gatewayUrl.protocol === "ws:" &&
+        (gatewayUrl.hostname === "127.0.0.1" || gatewayUrl.hostname === "localhost" || gatewayUrl.hostname === "::1");
+      if (gatewayUrl.protocol !== "wss:" && !isLocalWs) {
+        reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "Proxy config writes require a secure connection" } });
+        return;
+      }
+      if (!message.write) {
+        reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_INVALID", message: "Write request requires a write payload" } });
+        return;
+      }
+      try {
+        const result = service.write(message.write);
+        reply({ type: "CONFIG_RESULT", result });
+      } catch (error) {
+        const code = error instanceof ProxyConfigError ? error.code : "INTERNAL_ERROR";
+        const safeMessage = error instanceof ProxyConfigError
+          ? error.message
+          : "Proxy config write failed";
+        reply({ type: "CONFIG_ERROR", error: { code, message: safeMessage } });
+      }
+      return;
+    }
+
+    try {
+      reply({ type: "CONFIG_RESULT", result: service.readSafe() });
+    } catch {
+      reply({ type: "CONFIG_ERROR", error: { code: "INTERNAL_ERROR", message: "Failed to read proxy config" } });
+    }
   }
 }

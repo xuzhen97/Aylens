@@ -21,6 +21,8 @@ export interface RuntimeCapabilities {
   profiles: string[];
   profileDetails?: RuntimeBrowserProfileState[];
   providerStates?: Record<string, ProviderAuthState>;
+  /** 新 Runner 才支持代理配置通道;旧 Runner 缺省 false。 */
+  proxyConfig?: boolean;
   http: boolean;
   browserAutomation: boolean;
 }

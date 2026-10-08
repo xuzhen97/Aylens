@@ -9,6 +9,7 @@ import { buildAdminOverview } from "./admin-data.js";
 import { AdminHttpError, authenticateAdminOrBearer } from "./admin-security.js";
 import { AdminSessionStore, LoginLimiter } from "./admin-session.js";
 import { registerAdminSessionRoutes } from "./admin-session-routes.js";
+import { registerRunnerProxyRoutes } from "./runner-proxy-routes.js";
 
 const searchSchema = z.object({
   query: z.string().min(1),
@@ -113,8 +114,13 @@ export function buildHttpServer(context: GatewayContext, options: Pick<FastifySe
     return record;
   });
 
+  // Runner 代理配置管理:GET/POST 均走管理认证;写操作要求安全或本机连接。
+  registerRunnerProxyRoutes(app, context);
+
   app.addHook("onClose", async () => {
     sessions.clear();
+    // HTTP 服务关闭时释放 Gateway 持久化资源(SQLite 句柄、清理定时器)。
+    context.close();
   });
 
   attachRunnerGateway({

@@ -127,6 +127,13 @@ describe("url-fetch Gateway/Runner flow", () => {
       browser,
       pluginTypes: providers.factoryTypes(),
       providerAuthStates: new Map(),
+      proxyConfig: undefined,
+      captureExecution: () => ({
+        version: 0,
+        deployments: runnerConfig.providers,
+        transports,
+        browser,
+      }),
       reportProviderAuthState: () => undefined,
       close: async () => browser.close(),
     };

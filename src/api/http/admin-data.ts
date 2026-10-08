@@ -1,7 +1,6 @@
 import type { GatewayContext } from "../../app/context.js";
 import type { AuditRecord } from "../../audit/audit-service.js";
 
-const SENSITIVE_QUERY_KEY = /^(?:access_?token|api_?key|auth|authorization|code|credential|key|password|secret|session|signature|token)$/i;
 const SENSITIVE_LABEL_KEY = /(?:token|secret|password|passwd|api.?key|credential|authorization|auth)/i;
 
 function redactLabels(labels: Record<string, string>): Record<string, string> {
@@ -29,30 +28,8 @@ function toSafeRuntimeTarget(
   return runtime;
 }
 
-function redactQuery(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return trimmed;
-
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return trimmed;
-
-    url.username = "";
-    url.password = "";
-
-    for (const key of [...url.searchParams.keys()]) {
-      if (SENSITIVE_QUERY_KEY.test(key)) {
-        url.searchParams.set(key, "***");
-      }
-    }
-
-    return url.toString();
-  } catch {
-    return trimmed.length > 500 ? trimmed.slice(0, 500) + "…" : trimmed;
-  }
-}
-
 function toSafeAudit(record: AuditRecord) {
+  // 持久化层已写入脱敏请求;这里直接投影安全数据,不做二次覆盖或恢复原文。
   return {
     requestId: record.requestId,
     traceId: record.traceId,
@@ -60,7 +37,7 @@ function toSafeAudit(record: AuditRecord) {
     completedAt: record.completedAt,
     status: record.status,
     request: {
-      query: redactQuery(record.request.query),
+      query: record.request.query,
       route: record.request.route,
       sources: record.request.sources,
       limit: record.request.limit,

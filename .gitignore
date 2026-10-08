@@ -12,6 +12,9 @@ coverage/
 # Runner 侧 persistent Chrome 用户数据目录
 .profiles/
 
+# 本地 SQLite 数据目录(Gateway/Runner 各自独立)
+.data/
+
 # Playwright MCP captures
 .playwright-mcp/
 

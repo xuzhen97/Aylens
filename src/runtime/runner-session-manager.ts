@@ -73,6 +73,9 @@ export class RunnerSessionManager {
   }
 
   handle(message: RunnerToGatewayMessage): void {
+    // 配置回执不属于任务流,由独立的 RunnerConfigChannel 处理。
+    if (message.type === "CONFIG_RESULT" || message.type === "CONFIG_ERROR") return;
+
     // 只有任务级消息才携带 executionId。
     if (message.type === "REGISTER" || message.type === "HEARTBEAT") return;
 

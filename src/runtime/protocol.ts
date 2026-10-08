@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { providerAuthStateSchema } from "../contracts/validation.js";
+import { configReplySchema } from "./runner-config-channel.js";
+import { proxyWriteSchema } from "./proxy-config-contract.js";
 
 export const RUNNER_PROTOCOL_VERSION = "1";
 
@@ -19,9 +21,11 @@ const capabilitiesSchema = z.object({
   authProviderIds: z.array(z.string()).default([]),
   browsers: z.array(z.string()),
   profiles: z.array(z.string()),
-  // 兼容旧 Runner：调度仍使用 profiles；详细状态是增量可观测字段。
+  // 兼容旧 Runner:调度仍使用 profiles;详细状态是增量可观测字段。
   profileDetails: z.array(browserProfileStateSchema).default([]),
   providerStates: z.record(z.string(), providerAuthStateSchema).default({}),
+  // 兼容旧 Runner:新 Runner 才支持代理配置通道。
+  proxyConfig: z.boolean().default(false),
   http: z.boolean(),
   browserAutomation: z.boolean(),
 });
@@ -32,6 +36,7 @@ const capacitySchema = z.object({
 });
 
 export const runnerToGatewaySchema = z.discriminatedUnion("type", [
+  configReplySchema,
   z.object({
     type: z.literal("REGISTER"),
     messageId: z.string(),
@@ -114,6 +119,17 @@ export const gatewayToRunnerSchema = z.discriminatedUnion("type", [
     input: z.unknown(),
     requestId: z.string(),
     traceId: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal("CONFIG_REQUEST"),
+    messageId: z.string(),
+    requestId: z.string(),
+    runnerId: z.string(),
+    kind: z.enum(["read", "write"]),
+    write: proxyWriteSchema.optional(),
+    operationId: z.string().optional(),
+    expectedVersion: z.number().int().nonnegative().optional(),
     timestamp: z.number(),
   }),
   z.object({

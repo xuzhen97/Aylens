@@ -16,11 +16,20 @@ export interface AuditRecord {
   request: SearchRequest;
   createdAt: number;
   completedAt?: number;
-  status: "running" | "completed" | "partial" | "failed";
+  status: "running" | "completed" | "partial" | "failed" | "interrupted";
   providers: AuditProviderEvent[];
 }
 
-export class InMemoryAuditService {
+/** 审计服务行为契约:内存实现与 SQLite 实现共用。 */
+export interface AuditService {
+  start(requestId: string, traceId: string, request: SearchRequest): void;
+  addProviderEvent(requestId: string, event: AuditProviderEvent): void;
+  finish(requestId: string, status: AuditRecord["status"]): void;
+  list(limit?: number): AuditRecord[];
+  get(requestId: string): AuditRecord | undefined;
+}
+
+export class InMemoryAuditService implements AuditService {
   private readonly records = new Map<string, AuditRecord>();
 
   start(requestId: string, traceId: string, request: SearchRequest): void {

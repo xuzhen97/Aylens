@@ -1,4 +1,5 @@
 import type { AdminOverview, ApiError, ProviderAuthResponse, SearchRequest, SearchResponse, SessionInfo } from "./types";
+import type { ProxyWrite, SafeProxyConfig } from "./proxy-types";
 
 type ClientOptions = {
   fetchImpl?: typeof fetch;
@@ -79,6 +80,18 @@ export function createAdminClient(options: ClientOptions) {
     providerAuth(providerId: string, action: "login" | "check", signal?: AbortSignal): Promise<ProviderAuthResponse> {
       return request(`/v1/providers/${encodeURIComponent(providerId)}/auth/${action}`, {
         method: "POST",
+        ...(signal ? { signal } : {}),
+      }, true);
+    },
+    proxyConfig(runnerId: string, signal?: AbortSignal): Promise<SafeProxyConfig> {
+      return request(`/v1/admin/runners/${encodeURIComponent(runnerId)}/proxy-config`, {
+        ...(signal ? { signal } : {}),
+      });
+    },
+    writeProxyConfig(runnerId: string, write: ProxyWrite, signal?: AbortSignal): Promise<SafeProxyConfig> {
+      return request(`/v1/admin/runners/${encodeURIComponent(runnerId)}/proxy-config`, {
+        method: "POST",
+        body: JSON.stringify(write),
         ...(signal ? { signal } : {}),
       }, true);
     },
