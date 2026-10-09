@@ -17,7 +17,7 @@ export const runnerConfigSchema = z.object({
     gatewayUrl: z.string().url(),
     token: z.string().min(1),
     heartbeatMs: z.number().int().positive().default(10_000),
-    maxJobs: z.number().int().positive().default(1),
+    maxJobs: z.number().int().positive().default(10),
     labels: z.record(z.string(), z.string()).default({}),
   }),
   plugins: z.object({

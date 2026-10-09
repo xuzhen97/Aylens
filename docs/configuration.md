@@ -120,7 +120,7 @@ browserProfiles:
     interactive: true
 ```
 
-Runner 不再要求手工填写 `capabilities`。Provider Type 来自实际加载成功的 Plugin，Provider ID 来自本机 Deployment，Browser/Profile 能力来自实际 Browser Profile。Direct Transport、Plugin `baseDir`、心跳和并发数都有默认值。
+Runner 不再要求手工填写 `capabilities`。Provider Type 来自实际加载成功的 Plugin，Provider ID 来自本机 Deployment，Browser/Profile 能力来自实际 Browser Profile。Direct Transport、Plugin `baseDir`、心跳和并发数都有默认值：`runner.heartbeatMs` 默认 `10000`（毫秒），`runner.maxJobs` 默认 `10`（单 Runner 并发作业上限，超出的任务不会排队，而是由 Gateway 选其他可用 Runner；无可用节点时明确失败）。
 
 `browser.defaultProfile` 是 Runner 级共享浏览器工作区。Runner 会把它作为 `services.defaultBrowserProfile` 注入 ProviderFactory；`x-search` 始终使用该默认值，`url-fetch` 只在进入浏览器兜底阶段时才会用到它——它的 HTTP 阶段与浏览器完全无关。两者在未配置 `provider.browser.profile` 时都回退到该默认值。其他 Browser Provider 也应采用 `config.browser?.profile ?? services.defaultBrowserProfile` 的逻辑。需要隔离账号时，再在单个 Provider 上显式指定 `browser.profile` 覆盖默认值。
 
