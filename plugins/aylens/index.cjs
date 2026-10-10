@@ -432,16 +432,73 @@ async function handleLoginProviderAuth(client, params) {
   ].join("\n"));
 }
 
-// dist/handlers/search.js
+// dist/handlers/extract.js
 var MAX_LIMIT = 100;
+var MAX_BODY_CHARS = 4e3;
+function clip(value) {
+  return value.length > MAX_BODY_CHARS ? `${value.slice(0, MAX_BODY_CHARS)}
+\u2026\uFF08\u5DF2\u622A\u65AD\uFF09` : value;
+}
+async function handleExtract(client, params) {
+  const urls = readStringArray(params, "urls");
+  const sources = readStringArray(params, "sources");
+  const limit = readNumber(params, "limit");
+  const format = readString(params, "format");
+  if (!urls) {
+    throw new AylensBridgeError("INVALID_REQUEST", "\u7F3A\u5C11\u5FC5\u586B\u53C2\u6570 urls\uFF1A\u8BF7\u7ED9\u51FA\u8981\u63D0\u53D6\u7684 HTTP(S) \u5730\u5740\u5217\u8868\u3002");
+  }
+  if (!sources) {
+    throw new AylensBridgeError("INVALID_REQUEST", "\u7F3A\u5C11\u5FC5\u586B\u53C2\u6570 sources\uFF1A\u63D0\u53D6\u5FC5\u987B\u663E\u5F0F\u6307\u5B9A\u6765\u6E90\uFF0C\u4E0D\u4F1A\u9ED8\u8BA4\u8C03\u7528\u6240\u6709\u670D\u52A1\u3002");
+  }
+  if (limit !== void 0 && (limit <= 0 || limit > MAX_LIMIT)) {
+    throw new AylensBridgeError("INVALID_REQUEST", `limit \u5FC5\u987B\u5728 1..${MAX_LIMIT} \u4E4B\u95F4\uFF0C\u6536\u5230\uFF1A${limit}`);
+  }
+  if (format !== void 0 && format !== "markdown" && format !== "text") {
+    throw new AylensBridgeError("INVALID_REQUEST", `format \u53EA\u80FD\u662F markdown \u6216 text\uFF0C\u6536\u5230\uFF1A${format}`);
+  }
+  const body = { urls, sources };
+  if (limit !== void 0)
+    body.limit = limit;
+  if (format !== void 0)
+    body.content = { format };
+  const response = await client.post("/v1/extract", body);
+  const succeeded = response.items.filter((item) => item.status === "success");
+  const failed = response.items.filter((item) => item.status === "failed");
+  const lines = [
+    `\u63D0\u53D6\u72B6\u6001\uFF1A${response.status}\uFF08\u6210\u529F ${succeeded.length} / \u5931\u8D25 ${failed.length}\uFF09`,
+    ""
+  ];
+  for (const item of succeeded) {
+    const bodyText = clip(item.document?.markdown ?? item.document?.text ?? "");
+    lines.push(`## ${item.document?.title ?? item.url}`);
+    lines.push(`URL: ${item.url}`);
+    lines.push("");
+    lines.push(bodyText || "\uFF08\u65E0\u6B63\u6587\uFF09");
+    lines.push("");
+  }
+  if (failed.length > 0) {
+    lines.push("### \u5931\u8D25");
+    for (const item of failed) {
+      lines.push(`- ${item.url} \u2192 ${item.error?.code ?? "CONTENT_UNAVAILABLE"}`);
+    }
+  }
+  if (succeeded.length === 0) {
+    const details = Object.entries(response.meta?.providers ?? {}).map(([id, meta]) => `${id}: ${meta.error?.code ?? "FAILED"}`).join("; ");
+    throw new AylensBridgeError("NO_RUNTIME", `Aylens \u63D0\u53D6\u6CA1\u6709\u62FF\u5230\u4EFB\u4F55\u6B63\u6587\uFF08status=${response.status}\uFF09${details ? `\uFF1A${details}` : ""}`);
+  }
+  return ok(lines.join("\n"), `Aylens \u63D0\u53D6\u5B8C\u6210\uFF1A\u6210\u529F ${succeeded.length} \u6761\uFF0C\u5931\u8D25 ${failed.length} \u6761\uFF08status=${response.status}\uFF09\u3002`);
+}
+
+// dist/handlers/search.js
+var MAX_LIMIT2 = 100;
 async function handleSearch(client, params) {
   const query = requireString(params, "query");
   const route = readString(params, "route");
   const sources = readStringArray(params, "sources");
   const language = readString(params, "language");
   const limit = readNumber(params, "limit");
-  if (limit !== void 0 && (limit <= 0 || limit > MAX_LIMIT)) {
-    throw new AylensBridgeError("INVALID_REQUEST", `limit \u5FC5\u987B\u5728 1..${MAX_LIMIT} \u4E4B\u95F4\uFF0C\u6536\u5230\uFF1A${limit}`);
+  if (limit !== void 0 && (limit <= 0 || limit > MAX_LIMIT2)) {
+    throw new AylensBridgeError("INVALID_REQUEST", `limit \u5FC5\u987B\u5728 1..${MAX_LIMIT2} \u4E4B\u95F4\uFF0C\u6536\u5230\uFF1A${limit}`);
   }
   const body = { query };
   if (route !== void 0)
@@ -513,6 +570,16 @@ var COMMANDS = [
       { key: "limit", value: "5" }
     ],
     run: handleSearch
+  },
+  {
+    name: "Extract",
+    description: "\u529F\u80FD: \u5BF9\u663E\u5F0F URL \u5217\u8868\u63D0\u53D6\u6B63\u6587\uFF08\u4E0E Search \u662F\u4E24\u4E2A\u72EC\u7ACB\u80FD\u529B\uFF09\uFF0C\u8FD4\u56DE Markdown \u6216\u7EAF\u6587\u672C\u3001\u9010\u6761\u6210\u529F/\u5931\u8D25\u72B6\u6001\u3002\n`command` \u56FA\u5B9A\u4E3A `Extract`\uFF0C\u4E0D\u5F97\u586B\u5199 URL\u3001\u8DEF\u5F84\u6216\u81EA\u7136\u8BED\u8A00\u3002\n`urls` \u662F\u8981\u63D0\u53D6\u7684 HTTP(S) \u5730\u5740\u5217\u8868\uFF08\u9017\u53F7\u6216\u6362\u884C\u5206\u9694\uFF09\u3002\n`sources` \u5FC5\u586B\uFF0C\u6307\u5B9A\u63D0\u53D6\u6765\u6E90\uFF08\u5982 `tavily`\uFF09\uFF1B\u4E0D\u4F1A\u9ED8\u8BA4\u8C03\u7528\u6240\u6709\u63D0\u53D6\u670D\u52A1\uFF0C\u4E5F\u4E0D\u590D\u7528 Search \u7684\u9ED8\u8BA4\u8DEF\u7531\u3002\n`limit` \u4E3A\u671F\u671B\u8FD4\u56DE\u6761\u6570\uFF081-100\uFF09\uFF0C`content` \u63A7\u5236\u6B63\u6587\u683C\u5F0F\uFF08markdown \u6216 text\uFF09\u3002",
+    exampleParams: [
+      { key: "urls", value: "https://example.com/article" },
+      { key: "sources", value: "tavily" },
+      { key: "content", value: "markdown" }
+    ],
+    run: handleExtract
   },
   {
     name: "GetStatus",

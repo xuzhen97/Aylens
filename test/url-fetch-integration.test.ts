@@ -128,6 +128,11 @@ describe("url-fetch Gateway/Runner flow", () => {
       pluginTypes: providers.factoryTypes(),
       providerAuthStates: new Map(),
       proxyConfig: undefined,
+      // 必填字段显式传 undefined：不传会是编译错误，避免装配时静默漏掉。
+      credentials: undefined,
+      credentialPool: (providerId: string) => {
+        throw new Error(`credential pool is not available in this test: ${providerId}`);
+      },
       captureExecution: () => ({
         version: 0,
         deployments: runnerConfig.providers,

@@ -10,14 +10,8 @@ import { AdminHttpError, authenticateAdminOrBearer } from "./admin-security.js";
 import { AdminSessionStore, LoginLimiter } from "./admin-session.js";
 import { registerAdminSessionRoutes } from "./admin-session-routes.js";
 import { registerRunnerProxyRoutes } from "./runner-proxy-routes.js";
-
-const searchSchema = z.object({
-  query: z.string().min(1),
-  route: z.string().min(1).optional(),
-  sources: z.array(z.string().min(1)).optional(),
-  limit: z.number().int().positive().max(100).optional(),
-  language: z.string().min(1).optional(),
-});
+import { registerRunnerCredentialRoutes } from "./runner-credential-routes.js";
+import { extractRequestSchema, searchRequestSchema } from "../../contracts/validation.js";
 
 export function buildHttpServer(context: GatewayContext, options: Pick<FastifyServerOptions, "logger"> & { adminStaticRoot?: string } = {}): FastifyInstance {
   const app = Fastify({
@@ -81,7 +75,12 @@ export function buildHttpServer(context: GatewayContext, options: Pick<FastifySe
   app.get("/v1/admin/overview", async () => buildAdminOverview(context));
 
   app.post("/v1/search", async (request) => {
-    return context.search.search(searchSchema.parse(request.body));
+    return context.search.search(searchRequestSchema.parse(request.body));
+  });
+
+  // 独立的 Extract 能力:必须显式给出 sources,不与 search 共用路由默认值。
+  app.post("/v1/extract", async (request) => {
+    return context.extract.extract(extractRequestSchema.parse(request.body));
   });
 
   app.get("/v1/providers", async () => ({
@@ -96,6 +95,12 @@ export function buildHttpServer(context: GatewayContext, options: Pick<FastifySe
   app.post<{ Params: { providerId: string } }>("/v1/providers/:providerId/auth/check", async (request) => {
     const result = await context.dispatcher.auth(request.params.providerId, "check");
     return { providerId: request.params.providerId, runtimeId: result.runtimeId, auth: result.output };
+  });
+
+  // 用量查询：可选管理能力，未声明该能力的 Provider 返回明确错误，而不是空报告。
+  app.post<{ Params: { providerId: string } }>("/v1/providers/:providerId/usage", async (request) => {
+    const result = await context.dispatcher.usage(request.params.providerId);
+    return { providerId: request.params.providerId, runtimeId: result.runtimeId, usage: result.output };
   });
 
   app.post<{ Params: { providerId: string } }>("/v1/providers/:providerId/auth/login", async (request) => {
@@ -116,6 +121,8 @@ export function buildHttpServer(context: GatewayContext, options: Pick<FastifySe
 
   // Runner 代理配置管理:GET/POST 均走管理认证;写操作要求安全或本机连接。
   registerRunnerProxyRoutes(app, context);
+  // API 凭据池管理:与代理共用配置通道,但资源类型、能力声明与审计目标独立。
+  registerRunnerCredentialRoutes(app, context);
 
   app.addHook("onClose", async () => {
     sessions.clear();

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { AuditProviderEvent, AuditRecord } from "./audit-service.js";
+import type { AuditOperation, AuditProviderEvent, AuditRecord } from "./audit-service.js";
 import { toSafeRequest } from "./safe-request.js";
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -24,10 +24,16 @@ type ProviderEventRow = {
   result_count: number;
 };
 
-function rowToRecord(request: AuditRecord["request"], row: RequestRow, events: ProviderEventRow[]): AuditRecord {
+function rowToRecord(
+  request: AuditRecord["request"],
+  row: RequestRow,
+  events: ProviderEventRow[],
+  operation?: AuditOperation,
+): AuditRecord {
   return {
     requestId: row.request_id,
     traceId: row.trace_id,
+    ...(operation !== undefined ? { operation } : {}),
     request,
     createdAt: row.created_at,
     ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
@@ -51,11 +57,15 @@ function rowToRecord(request: AuditRecord["request"], row: RequestRow, events: P
 export class SqliteAuditService {
   constructor(private readonly db: DatabaseSync) {}
 
-  start(requestId: string, traceId: string, request: AuditRecord["request"]): void {
+  start(requestId: string, traceId: string, request: AuditRecord["request"], operation?: AuditOperation): void {
     // 只允许白名单字段进入存储;原始请求对象不落库。
+    // operation 与 request 同层写入:旧记录缺省,读取时按 search 解释。
+    const payload = operation === undefined
+      ? toSafeRequest(request)
+      : { operation, ...toSafeRequest(request) };
     this.db.prepare(
       "INSERT INTO audit_requests (request_id, trace_id, request_json, created_at, status) VALUES (?, ?, ?, ?, 'running')",
-    ).run(requestId, traceId, JSON.stringify(toSafeRequest(request)), Date.now());
+    ).run(requestId, traceId, JSON.stringify(payload), Date.now());
   }
 
   addProviderEvent(requestId: string, event: AuditProviderEvent): void {
@@ -133,11 +143,16 @@ export class SqliteAuditService {
       "SELECT * FROM audit_provider_events WHERE request_id = ? ORDER BY started_at ASC",
     ).all(row.request_id) as ProviderEventRow[];
     let request: AuditRecord["request"];
+    let operation: AuditOperation | undefined;
     try {
-      request = JSON.parse(row.request_json) as AuditRecord["request"];
+      const parsed = JSON.parse(row.request_json) as AuditRecord["request"] & { operation?: AuditOperation };
+      // 旧记录没有 operation 字段,按 search 解释;extract 记录显式带该字段。
+      const { operation: parsedOperation, ...rest } = parsed;
+      request = rest;
+      if (parsedOperation === "search" || parsedOperation === "extract") operation = parsedOperation;
     } catch (error) {
       throw new Error(`Corrupted audit record for request ${row.request_id}`, { cause: error });
     }
-    return rowToRecord(request, row, events);
+    return rowToRecord(request, row, events, operation);
   }
 }

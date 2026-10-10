@@ -197,6 +197,8 @@ async function readVisiblePosts(page: Page): Promise<RawPost[]> {
 
 export const xSearchFactory: ProviderFactory = {
   type: "x-search",
+  // X 原生查询只覆盖搜索;不实现 Extract。
+  capabilities: ["search"],
   authControl: true,
 
   create(id, config, services) {

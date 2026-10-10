@@ -1,6 +1,7 @@
 import type { AylensClient } from "./client.js";
 import { handleGetAudit, handleGetOverview } from "./handlers/admin.js";
 import { handleCheckProviderAuth, handleLoginProviderAuth } from "./handlers/providers.js";
+import { handleExtract } from "./handlers/extract.js";
 import { handleSearch } from "./handlers/search.js";
 import { handleGetStatus, handleListProviders, handleListRuntimes } from "./handlers/system.js";
 import type { VcpParams } from "./params.js";
@@ -47,6 +48,21 @@ export const COMMANDS: CommandDefinition[] = [
 			{ key: "limit", value: "5" },
 		],
 		run: handleSearch,
+	},
+	{
+		name: "Extract",
+		description:
+			"功能: 对显式 URL 列表提取正文（与 Search 是两个独立能力），返回 Markdown 或纯文本、逐条成功/失败状态。\n" +
+			"`command` 固定为 `Extract`，不得填写 URL、路径或自然语言。\n" +
+			"`urls` 是要提取的 HTTP(S) 地址列表（逗号或换行分隔）。\n" +
+			"`sources` 必填，指定提取来源（如 `tavily`）；不会默认调用所有提取服务，也不复用 Search 的默认路由。\n" +
+			"`limit` 为期望返回条数（1-100），`content` 控制正文格式（markdown 或 text）。",
+		exampleParams: [
+			{ key: "urls", value: "https://example.com/article" },
+			{ key: "sources", value: "tavily" },
+			{ key: "content", value: "markdown" },
+		],
+		run: handleExtract,
 	},
 	{
 		name: "GetStatus",

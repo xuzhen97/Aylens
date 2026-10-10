@@ -36,6 +36,8 @@ const MIN_SALVAGE_TEXT = 40;
 
 export const urlFetchFactory: ProviderFactory = {
   type: "url-fetch",
+  // 只实现搜索(输入 URL → 文档);指定 URL 的独立提取走 Extract 能力,此处未实现。
+  capabilities: ["search"],
 
   create(id, config, services) {
     // 创建时只解析选项，不要求 BrowserHost：没有浏览器的 Runner 仍能完成静态获取。

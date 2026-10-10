@@ -42,7 +42,7 @@ describe("RunnerConfigChannel", () => {
   it("sends a CONFIG_REQUEST and resolves with a CONFIG_RESULT payload", async () => {
     const channel = makeChannel();
     const socket = fakeSocket();
-    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true });
+    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true, supportsCredentialConfig: false });
 
     const pending = channel.request("r1", { kind: "write", write: sampleWrite });
     expect(socket.sent).toHaveLength(1);
@@ -77,7 +77,7 @@ describe("RunnerConfigChannel", () => {
     try {
       const channel = makeChannel({ timeoutMs: 50 });
       const socket = fakeSocket();
-      channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true });
+      channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true, supportsCredentialConfig: false });
 
       const read = channel.request("r1", { kind: "read" });
       const write = channel.request("r1", { kind: "write", write: sampleWrite });
@@ -94,7 +94,7 @@ describe("RunnerConfigChannel", () => {
   it("marks a sent write as uncertain when the connection disappears", async () => {
     const channel = makeChannel();
     const socket = fakeSocket();
-    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true });
+    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true, supportsCredentialConfig: false });
 
     const pending = channel.request("r1", { kind: "write", write: sampleWrite });
     channel.detach("r1", socket as never);
@@ -109,7 +109,7 @@ describe("RunnerConfigChannel", () => {
   it("ignores replies that do not match requestId and runnerId", async () => {
     const channel = makeChannel();
     const socket = fakeSocket();
-    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true });
+    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: true, supportsCredentialConfig: false });
 
     const pending = channel.request("r1", { kind: "read" });
     const sent = socket.sent[0]!;
@@ -147,7 +147,7 @@ describe("RunnerConfigChannel", () => {
   it("rejects requests to runners that do not advertise proxyConfig support", async () => {
     const channel = makeChannel();
     const socket = fakeSocket();
-    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: false });
+    channel.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: false, supportsCredentialConfig: false });
 
     await expect(channel.request("r1", { kind: "read" }))
       .rejects.toMatchObject({ code: "CONFIG_UNSUPPORTED" });
@@ -159,10 +159,10 @@ describe("RunnerConfigChannel", () => {
     const channel = makeChannel();
     const socketA = fakeSocket();
     const socketB = fakeSocket();
-    channel.attach("r1", socketA as never, { secureOrLocal: true, supportsProxyConfig: true });
+    channel.attach("r1", socketA as never, { secureOrLocal: true, supportsProxyConfig: true, supportsCredentialConfig: false });
 
     const pending = channel.request("r1", { kind: "write", write: sampleWrite });
-    channel.attach("r1", socketB as never, { secureOrLocal: true, supportsProxyConfig: true });
+    channel.attach("r1", socketB as never, { secureOrLocal: true, supportsProxyConfig: true, supportsCredentialConfig: false });
 
     await expect(pending).rejects.toMatchObject({ code: "CONFIG_RESULT_UNKNOWN" });
     channel.close();

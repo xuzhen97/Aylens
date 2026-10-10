@@ -4,6 +4,8 @@ export default {
   factories: [
     {
       type: "fixture-remote",
+      // 插件加载器要求显式声明能力;fixture 只实现 search。
+      capabilities: ["search"],
       authControl: true,
       create(id, _config, services) {
         return {

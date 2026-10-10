@@ -7,8 +7,11 @@ import { DirectTransportFactory } from "../transports/direct.js";
 import { HttpProxyTransportFactory } from "../transports/http-proxy.js";
 import { Socks5TransportFactory } from "../transports/socks5.js";
 import { TransportRegistry } from "../transports/registry.js";
+import { RetrievalError } from "../core/errors.js";
 import type { RunnerConfig } from "./config.js";
 import type { ProxyConfigService } from "./proxy-config-service.js";
+import type { CredentialConfigService } from "./credentials/service.js";
+import { CredentialPool } from "./credentials/pool.js";
 import { buildExecutionSnapshot, type ExecutionSnapshot } from "./execution-snapshot.js";
 import type { ProviderAuthState } from "../providers/types.js";
 
@@ -22,6 +25,15 @@ export interface RunnerRuntime {
   providerAuthStates: Map<string, ProviderAuthState>;
   /** 代理配置服务;未接入数据库的旧调用方可省略。 */
   proxyConfig: ProxyConfigService | undefined;
+  /** API 凭据配置服务。与 proxyConfig 独立：两者都由 Runner 启动时接入。 */
+  credentials: CredentialConfigService | undefined;
+  /**
+   * 取该 Provider 绑定的凭据池，供 API 型 Provider 取 Key。
+   *
+   * 内部按配置版本惰性刷新：配置写入后新请求看到新 Key，
+   * 未变更时不重复重建（进行中的占用得以保留）。
+   */
+  credentialPool(providerId: string): { poolId: string; pool: CredentialPool };
   /** 任务开始时取得不可变快照;新任务总是读到当前已发布版本。 */
   captureExecution(): ExecutionSnapshot;
   reportProviderAuthState(providerId: string, state: ProviderAuthState): void;
@@ -30,7 +42,12 @@ export interface RunnerRuntime {
 
 export async function createRunnerRuntime(
   config: RunnerConfig,
-  options: { proxyConfig?: ProxyConfigService } = {},
+  // 必填：两个服务都是真实入口应当装配的能力。缺任一由调用点显式传 undefined，
+  // 不默认成 `{}`，避免新增入口漏传后能力静默降级（该仓库已知的事故模式）。
+  options: {
+    proxyConfig: ProxyConfigService | undefined;
+    credentials: CredentialConfigService | undefined;
+  },
 ): Promise<RunnerRuntime> {
   const transports = new TransportRegistry();
   transports.registerFactory(new DirectTransportFactory());
@@ -78,6 +95,17 @@ export async function createRunnerRuntime(
     });
   };
 
+  // 凭据池：所有池共享一个实例（内部按 poolId 分组），按配置版本惰性刷新。
+  const initialCredentialState = options.credentials?.snapshot() ?? {
+    version: 0,
+    pools: [],
+    credentials: [],
+    bindings: {},
+    state: {},
+  };
+  const credentialPool = new CredentialPool(initialCredentialState);
+  let credentialPoolVersion = initialCredentialState.version;
+
   return {
     providers,
     get deployments() {
@@ -93,6 +121,32 @@ export async function createRunnerRuntime(
     pluginTypes: providers.factoryTypes(),
     providerAuthStates,
     proxyConfig: options.proxyConfig,
+    credentials: options.credentials,
+    credentialPool: (providerId: string) => {
+      if (!options.credentials) {
+        throw new RetrievalError(
+          "PROVIDER_UNAVAILABLE",
+          `Runner has no credential service for provider: ${providerId}`,
+          { retryable: false },
+        );
+      }
+      // 按配置版本惰性刷新：写入后新请求看到新 Key；未变更时不重建，
+      // 进行中的并发占用得以保留（replaceState 按内容指纹保留）。
+      const state = options.credentials.snapshot();
+      if (state.version !== credentialPoolVersion) {
+        credentialPool.replaceState(state);
+        credentialPoolVersion = state.version;
+      }
+      const poolId = state.bindings[providerId];
+      if (poolId === undefined || poolId === null) {
+        throw new RetrievalError(
+          "PROVIDER_UNAVAILABLE",
+          `Provider has no credential pool bound: ${providerId}`,
+          { retryable: false },
+        );
+      }
+      return { poolId, pool: credentialPool };
+    },
     captureExecution: () => activeSnapshot,
     reportProviderAuthState,
     close: async () => browser.close(),

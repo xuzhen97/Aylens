@@ -70,7 +70,7 @@ function attachRunner(context: ReturnType<typeof createGatewayContext>, options:
     close: () => undefined,
   };
   context.runnerSessions.attach("r1", socket as never);
-  context.configChannel?.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: options.supportsProxyConfig ?? true });
+  context.configChannel?.attach("r1", socket as never, { secureOrLocal: true, supportsProxyConfig: options.supportsProxyConfig ?? true, supportsCredentialConfig: false });
   return sent;
 }
 

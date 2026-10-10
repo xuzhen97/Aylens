@@ -4,8 +4,11 @@ import type { RunnerConfig } from "./config.js";
 import type { RunnerRuntime } from "./runtime.js";
 import { createId } from "../shared/ids.js";
 import { RetrievalError, toErrorPayload } from "../core/errors.js";
-import { searchRequestSchema } from "../contracts/validation.js";
+import { extractRequestSchema, searchRequestSchema } from "../contracts/validation.js";
 import { ProxyConfigError } from "./proxy-config-service.js";
+import { CredentialConfigError } from "./credentials/service.js";
+import { credentialWriteSchema } from "../runtime/credential-config-contract.js";
+import { proxyWriteSchema } from "../runtime/proxy-config-contract.js";
 import {
   gatewayToRunnerSchema,
   RUNNER_PROTOCOL_VERSION,
@@ -299,6 +302,27 @@ export class AylensRunner {
       if (message.operation === "search") {
         const request = searchRequestSchema.parse(message.input);
         output = await provider.search(providerContext, request);
+      } else if (message.operation === "extract") {
+        // extract 是独立能力：未实现的 Provider 明确拒绝，不能回落到 search 或 openLogin。
+        if (!provider.extract) {
+          throw new RetrievalError(
+            "PROVIDER_UNAVAILABLE",
+            `Provider does not support extract: ${message.providerId}`,
+            { retryable: false },
+          );
+        }
+        const request = extractRequestSchema.parse(message.input);
+        output = await provider.extract(providerContext, request);
+      } else if (message.operation === "usage") {
+        // 用量是可选管理能力：未实现的 Provider 明确拒绝，不返回空报告冒充“未知”。
+        if (!provider.usage) {
+          throw new RetrievalError(
+            "PROVIDER_UNAVAILABLE",
+            `Provider does not support usage reporting: ${message.providerId}`,
+            { retryable: false },
+          );
+        }
+        output = await provider.usage(providerContext);
       } else if (message.operation === "auth_check") {
         if (!provider.checkAuth) {
           throw new RetrievalError(
@@ -416,6 +440,17 @@ export class AylensRunner {
       authProviderIds: Object.entries(this.runtime.deployments)
         .filter(([, deployment]) => this.runtime.providers.supportsAuth(deployment.type))
         .map(([providerId]) => providerId),
+      // 每个已部署 Provider 的真实操作能力,来自 Factory 声明而非配置猜测。
+      // 未加载对应 factory 的部署不上报:其既无法执行(创建时会明确失败),
+      // 也不得被 Gateway 当作具备 extract —— 但绝不能因此抛错打挂心跳。
+      providerOperations: Object.fromEntries(
+        Object.entries(this.runtime.deployments)
+          .filter(([, deployment]) => this.runtime.providers.hasFactory(deployment.type))
+          .map(([providerId, deployment]) => [
+            providerId,
+            this.runtime.providers.capabilitiesOf(deployment.type),
+          ]),
+      ),
       browsers: [...new Set(profiles.map((profile) => profile.browser))],
       profiles: profiles.map((profile) => profile.id),
       // 只上报可观测字段；userDataDir、CDP endpoint、可执行路径、Cookie/凭据等始终留在 Runner 本机。
@@ -434,6 +469,7 @@ export class AylensRunner {
       browserAutomation: profiles.length > 0,
       // 仅在接入权威配置库的新 Runner 上声明;旧 Runner 缺省 false,Gateway 拒绝向其发送配置消息。
       proxyConfig: this.runtime.proxyConfig !== undefined,
+      credentialConfig: this.runtime.credentials !== undefined,
     };
   }
 
@@ -455,6 +491,14 @@ export class AylensRunner {
       }));
     };
 
+    const resource = message.resource ?? "proxy";
+    const replyWithResource = (payload: Record<string, unknown>) => reply({ ...payload, resource });
+
+    if (resource === "credentials") {
+      await this.handleCredentialConfigRequest(message, replyWithResource);
+      return;
+    }
+
     const service = this.runtime.proxyConfig;
     if (!service) {
       reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "This runner does not support proxy configuration" } });
@@ -475,12 +519,15 @@ export class AylensRunner {
         reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "Proxy config writes require a secure connection" } });
         return;
       }
-      if (!message.write) {
+      // write 现在是「代理 | 凭据」的联合：代理分支必须自己校验并收窄，
+      // 否则会把凭据写入误喂给代理服务（类型上也会直接报错）。
+      const parsed = proxyWriteSchema.safeParse(message.write);
+      if (!parsed.success) {
         reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_INVALID", message: "Write request requires a write payload" } });
         return;
       }
       try {
-        const result = service.write(message.write);
+        const result = service.write(parsed.data);
         reply({ type: "CONFIG_RESULT", result });
       } catch (error) {
         const code = error instanceof ProxyConfigError ? error.code : "INTERNAL_ERROR";
@@ -496,6 +543,66 @@ export class AylensRunner {
       reply({ type: "CONFIG_RESULT", result: service.readSafe() });
     } catch {
       reply({ type: "CONFIG_ERROR", error: { code: "INTERNAL_ERROR", message: "Failed to read proxy config" } });
+    }
+  }
+
+  /**
+   * 处理 API 凭据配置请求：与代理配置同一通道、同一安全前置，
+   * 但走独立的服务与脱敏视图。回执固定带 resource，便于 Gateway 区分两类结果。
+   */
+  private async handleCredentialConfigRequest(
+    message: Extract<ReturnType<typeof gatewayToRunnerSchema.parse>, { type: "CONFIG_REQUEST" }>,
+    reply: (payload: Record<string, unknown>) => void,
+  ): Promise<void> {
+    const service = this.runtime.credentials;
+    if (!service) {
+      reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "This runner does not support credential configuration" } });
+      return;
+    }
+
+    if (message.kind === "write") {
+      // 写入前置：连接安全与 payload 合法性。失败只回固定安全错误，不回显写入内容。
+      let gatewayUrl: URL;
+      try {
+        gatewayUrl = new URL(this.config.runner.gatewayUrl);
+      } catch {
+        reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "Runner gateway URL is invalid" } });
+        return;
+      }
+      const isLocalWs = gatewayUrl.protocol === "ws:" &&
+        (gatewayUrl.hostname === "127.0.0.1" || gatewayUrl.hostname === "localhost" || gatewayUrl.hostname === "::1");
+      if (gatewayUrl.protocol !== "wss:" && !isLocalWs) {
+        reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_UNSUPPORTED", message: "Credential config writes require a secure connection" } });
+        return;
+      }
+      if (!message.write) {
+        reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_INVALID", message: "Write request requires a write payload" } });
+        return;
+      }
+
+      const parsed = credentialWriteSchema.safeParse(message.write);
+      if (!parsed.success) {
+        reply({ type: "CONFIG_ERROR", error: { code: "CONFIG_INVALID", message: "Credential config mutation is invalid" } });
+        return;
+      }
+
+      try {
+        const result = service.write(parsed.data);
+        reply({ type: "CONFIG_RESULT", result });
+      } catch (error) {
+        const code = error instanceof CredentialConfigError ? error.code : "INTERNAL_ERROR";
+        const safeMessage = error instanceof CredentialConfigError
+          ? error.message
+          : "Credential config write failed";
+        reply({ type: "CONFIG_ERROR", error: { code, message: safeMessage } });
+      }
+      return;
+    }
+
+    try {
+      reply({ type: "CONFIG_RESULT", result: service.safeView() });
+    } catch {
+      reply({ type: "CONFIG_ERROR", error: { code: "INTERNAL_ERROR", message: "Failed to read credential config" } });
     }
   }
 }

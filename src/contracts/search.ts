@@ -4,6 +4,13 @@ export interface SearchRequest {
   sources?: string[] | undefined;
   limit?: number | undefined;
   language?: string | undefined;
+  /**
+   * 是否在本次搜索里顺带取正文。缺省 = 不取，
+   * 既有调用不会因此多产生上游费用或更大的响应。
+   */
+  content?: { mode: "none" | "summary" | "full"; format?: "markdown" | "text" | undefined; maxChars?: number | undefined } | undefined;
+  /** 服务商专属选项，按 Provider ID 分命名空间，由对应适配器严格校验。 */
+  providerOptions?: Record<string, Record<string, unknown>> | undefined;
 }
 
 export interface SearchDocument {

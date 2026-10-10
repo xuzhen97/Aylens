@@ -269,6 +269,105 @@ Admin Providers 页面因此可以展示最近识别到的 X 账号与登录有�
 
 如果 X 将会话重定向到 `/login` 或 `/i/flow/login`，Provider 上报 `auth_required` 并让搜索返回 `PROFILE_AUTH_REQUIRED`。Runner heartbeat 只把最近账号显示信息、认证状态和检查时间上报 Gateway，不上传 Cookie、Token 或密码。
 
+## Tavily（API 检索与凭据池）
+
+仓库包含：
+
+```text
+src/providers/tavily/
+```
+
+它是 Aylens 官方内置的 API 型 Provider，提供两个独立能力：
+
+- **Search**：`POST https://api.tavily.com/search`，返回搜索结果；
+- **Extract**：`POST https://api.tavily.com/extract`，按显式 URL 列表取正文。
+
+### 与浏览器完全无关
+
+Tavily（以及后续接入的 Exa、AnySearch）都是**直接调用 HTTPS API**：
+
+- 不获取 Browser Profile、不占用 Profile Lease、不启动 Chrome、不用 Cookie；
+- 请求走 Runner 的 HTTP Transport（可用 `providers.tavily.transport` 指定代理）；
+- 因此可以部署**不配任何 Browser Profile**的 API-only Runner —— 见 `test/api-only-runner.test.ts`。
+
+服务商自己的服务端可能用网页爬取，那是它们的内部实现，与 Aylens 的浏览器资源无关。
+
+### 凭据池（CredentialPool）
+
+凭据池是 **API Key 池**，不是浏览器池。两者生命周期与安全语义完全不同：
+
+| | CredentialPool | Browser Profile / Lease |
+| --- | --- | --- |
+| 管理对象 | 多个 API Key | 用户数据目录、登录态 |
+| 调度动作 | 轮询、并发占用、冷却、分层限流 | Profile 占用与释放 |
+| 敏感内容 | API Key | Cookie、Local Storage |
+
+**Key 与池的唯一权威来源是 Runner 的 SQLite**，不由 YAML 覆盖。管理入口在
+`/admin → API 凭据`，请求与回执经由与代理配置同一条安全通道（HTTPS/WSS、
+本机 loopback 例外、版本冲突 409、断线视为“结果待确认”）。Gateway 只短暂转发
+提交的 Key：不持久化、不回显、不写日志或审计；读取只返回 `maskedSecret`。
+
+分层限流是核心：失败被分类为
+`category`（auth / rate_limited / quota / invalid_request / network / upstream / item_content）与
+`scope`（request / credential / account / endpoint_group / service / unknown）。同
+账号（`account`）或同接口组限流时**不会继续轮换同组 Key** —— 换了也一样被拒；
+请求参数错误与逐 URL 内容失败不会把 Key 标成坏的。
+
+### 公共执行机制与后续服务商
+
+每个 API 服务商都要做、且做错就会静默出错的四件事，统一由
+`src/api-client/api-call-executor.ts` 承担：
+
+1. 每次调用**占用一把凭据**并在 `finally` 释放（取消/超时/4xx 都不泄漏并发额度）；
+2. 认证头**只发往受信 origin**，不跟随重定向；
+3. 失败同时回报给凭据池与调用方，避免“池认为可用但接口报错”的分歧；
+4. 网络/超时错误**不诬陷凭据**（不把 Key 标成坏的）。
+
+服务商差异全部留在各自适配器里：端点与参数、原生批次上限、错误语义、
+内容映射、用量解释。两类常见形状都已经有测试兵底：
+
+| 形状 | 差异点 |
+| --- | --- |
+| Tavily | 原生批次 20；成败看 HTTP 状态 |
+| Exa 类 | 原生批次可达 100；同 Team 共享限流与余额 |
+| AnySearch 类 | 每次只取 1 个 URL（须自行有界并发）；HTTP 200 仍可能带业务失败码 |
+
+“能承接新服务商”不是口头承诺：`test/provider-compat.test.ts` 用测试替身
+逐项证明公共层不预设 Tavily 的形状（100 URL 不被迫拆批、单 URL 适配器并发受限、
+业务码失败会落到凭据池），`test/credential-pool.test.ts` 证明账号级限流不轮换同组 Key。
+替身仅用于测试，**不是可上线的 Exa / AnySearch 实现**。
+
+### 调用示例
+
+Gateway 默认把 `tavily` 设为 `enabled: false`（没配 Key 就不该默认产生付费调用），
+在 Admin 启用并绑定池后可用：
+
+```json
+POST /v1/search { "query": "OpenAI 发布", "sources": ["tavily"], "limit": 5 }
+POST /v1/extract { "urls": ["https://example.com/a"], "sources": ["tavily"] }
+```
+
+`/v1/extract` **必须显式给出 `sources`**：不复用 Search 的默认路由，也不默认并行
+调用所有提取服务。既有 `url-fetch` 的 URL-as-query 入口保持不变。
+
+### 用量与费用
+
+- `include_usage`（部署 options 或 `SearchRequest.content`）可在响应中拿到本次消费；
+- 用量必须区分来源与单位：官方统计（`accuracy: official`）、响应报告、本地估算三者不等价；
+- **未知不是 0**，估算费用不是账单；不同服务商的 credits / requests / USD 不可直接比较；
+- 自动提升搜索深度会增加费用，因此不作为默认行为。
+
+### 数据披露与限制
+
+把查询词与 URL 发送给 Tavily 属于向第三方披露，不同于本地 `url-fetch` 抓取；
+结果内容是非可信文档数据，不得当作工具指令执行。上游错误 message 可能包含敏感
+信息，一律不透传、不落日志；逐 URL 失败只返回本地固定文案与错误码。
+
+Runner 数据库持有明文 Key，第一期**未做应用层静态加密**，数据库与备份必须按敏感
+文件保护，不能宣称已加密。凭据池只协调本 Runner 的流量；多 Runner 共用同一账号时
+本地限流不是全局限制。
+
+
 ## 人工登录态
 
 `url-fetch` **不提供人工登录流程**：它的 HTTP 阶段是匿名的，也不会自动完成登录。需要登录态的页面有两条路：

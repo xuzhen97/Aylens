@@ -10,6 +10,8 @@ import { runnerDbPath } from "../storage/paths.js";
 import { runnerMigrations } from "../storage/runner-migrations.js";
 import { ProxyConfigStore } from "./proxy-config-store.js";
 import { ProxyConfigService } from "./proxy-config-service.js";
+import { CredentialStore } from "./credentials/store.js";
+import { CredentialConfigService } from "./credentials/service.js";
 
 export const runnerConfigSchema = z.object({
   runner: z.object({
@@ -133,6 +135,9 @@ export interface RunnerStartup {
   config: RunnerConfig;
   store: ProxyConfigStore;
   service: ProxyConfigService;
+  /** API 凭据池：与代理共用同一个 Runner 数据库，但表与所有权完全独立。 */
+  credentialStore: CredentialStore;
+  credentialService: CredentialConfigService;
   database: DatabaseSync;
   databasePath: string;
   close(): void;
@@ -234,11 +239,20 @@ function buildRunnerStartup(
   });
 
   const service = new ProxyConfigService(store, assembled);
+  // 凭据服务与代理共用同一个 db：迁移已包含凭据表（runner-migrations v2）。
+  // providerTypes 用于校验 bind 的服务归属，取自已组装的最终部署配置。
+  const credentialStore = new CredentialStore(database);
+  const providerTypes = Object.fromEntries(
+    Object.entries(assembled.providers).map(([id, deployment]) => [id, deployment.type]),
+  );
+  const credentialService = new CredentialConfigService(credentialStore, providerTypes);
   let closed = false;
   return {
     config: assembled,
     store,
     service,
+    credentialStore,
+    credentialService,
     database,
     databasePath,
     close: () => {

@@ -1,17 +1,27 @@
 import { z } from "zod";
 import { safeProxyConfigSchema } from "./proxy-config-contract.js";
+import { safeCredentialConfigSchema } from "./credential-config-contract.js";
 import { createId } from "../shared/ids.js";
 import { RetrievalError, isRetrievalErrorCode, type RetrievalErrorCode } from "../core/errors.js";
 import type { ProxyWrite, SafeProxyConfig } from "./proxy-config-contract.js";
+import type { CredentialWrite, SafeCredentialConfig } from "./credential-config-contract.js";
 import type WebSocket from "ws";
 
 export const CONFIG_REQUEST_TIMEOUT_MS = 10_000;
 const MAX_PENDING_PER_RUNNER = 32;
 
+/**
+ * 配置资源类型。代理与凭据是两份独立的所有权与权限边界，
+ * 用同一份通道传输但带显式 resource：旧 Runner 不识别凭据请求时
+ * 不会把它当成代理写入去解析（会直接校验失败，而非静默写错表）。
+ */
+export type ConfigResource = "proxy" | "credentials";
+
 /** Gateway → Runner 的独立配置请求;write 携带 operationId 与期望版本。 */
 export interface ConfigRequestPayload {
+  resource?: ConfigResource;
   kind: "read" | "write";
-  write?: ProxyWrite;
+  write?: ProxyWrite | CredentialWrite;
 }
 
 export const configResultMessageSchema = z.object({
@@ -19,7 +29,9 @@ export const configResultMessageSchema = z.object({
   messageId: z.string(),
   requestId: z.string(),
   runnerId: z.string(),
-  result: safeProxyConfigSchema,
+  /** 旧 Runner 不回该字段 → 按 proxy 解析，保持既有代理通道兼容。 */
+  resource: z.enum(["proxy", "credentials"]).optional(),
+  result: z.union([safeProxyConfigSchema, safeCredentialConfigSchema]),
   timestamp: z.number(),
 });
 
@@ -43,18 +55,33 @@ export const configReplySchema = z.discriminatedUnion("type", [
 export type ConfigReplyMessage = z.infer<typeof configReplySchema>;
 
 interface PendingEntry {
-  resolve: (value: SafeProxyConfig) => void;
+  resolve: (value: SafeProxyConfig | SafeCredentialConfig) => void;
   reject: (reason: unknown) => void;
   timer: NodeJS.Timeout;
   runtimeId: string;
+  resource: ConfigResource;
   /** 已发送 write 的请求,任何连接/超时失败都只能报告“结果待确认”。 */
   isWrite: boolean;
+}
+
+/**
+ * attach 所需的会话元数据。
+ *
+ * 全部字段**必填**：两个 supports* 都是「对端能力事实」，漏传会退化成
+ * “该能力不存在”，而调用点漏传不会有任何编译或测试信号。
+ * 设成必填后，新增能力必须同步更新每个调用点，漏一个就是编译错误。
+ */
+export interface ConfigChannelAttachMetadata {
+  secureOrLocal: boolean;
+  supportsProxyConfig: boolean;
+  supportsCredentialConfig: boolean;
 }
 
 interface AttachedSocket {
   socket: WebSocket;
   secureOrLocal: boolean;
   supportsProxyConfig: boolean;
+  supportsCredentialConfig: boolean;
 }
 
 /**
@@ -67,7 +94,11 @@ export class RunnerConfigChannel {
 
   constructor(private readonly timeoutMs = CONFIG_REQUEST_TIMEOUT_MS) {}
 
-  attach(runtimeId: string, socket: WebSocket, metadata: { secureOrLocal: boolean; supportsProxyConfig?: boolean }): void {
+  attach(
+    runtimeId: string,
+    socket: WebSocket,
+    metadata: ConfigChannelAttachMetadata,
+  ): void {
     const previous = this.attached.get(runtimeId);
     if (previous && previous.socket !== socket) {
       this.failPending(runtimeId, "CONFIG_RESULT_UNKNOWN", "Runner session was replaced");
@@ -79,7 +110,8 @@ export class RunnerConfigChannel {
     this.attached.set(runtimeId, {
       socket,
       secureOrLocal: metadata.secureOrLocal,
-      supportsProxyConfig: metadata.supportsProxyConfig ?? false,
+      supportsProxyConfig: metadata.supportsProxyConfig,
+      supportsCredentialConfig: metadata.supportsCredentialConfig,
     });
   }
 
@@ -90,13 +122,28 @@ export class RunnerConfigChannel {
     this.failPending(runtimeId, "CONFIG_RESULT_UNKNOWN", "Runner connection was lost");
   }
 
-  async request(runtimeId: string, payload: ConfigRequestPayload): Promise<SafeProxyConfig> {
+  async request(
+    runtimeId: string,
+    payload: ConfigRequestPayload,
+  ): Promise<SafeProxyConfig | SafeCredentialConfig> {
+    const resource: ConfigResource = payload.resource ?? "proxy";
     const attached = this.attached.get(runtimeId);
     if (!attached || attached.socket.readyState !== attached.socket.OPEN) {
       throw new RetrievalError("RUNTIME_OFFLINE", `Runtime is not connected: ${runtimeId}`, { retryable: true });
     }
-    if (!attached.secureOrLocal || !attached.supportsProxyConfig) {
-      throw new RetrievalError("CONFIG_UNSUPPORTED", "Secure connection or proxy config support is required", { retryable: false });
+    if (!attached.secureOrLocal) {
+      throw new RetrievalError("CONFIG_UNSUPPORTED", "Secure connection or config support is required", { retryable: false });
+    }
+    // 两份能力各自独立：只支持代理的旧 Runner 不能接到凭据写入，反之亦然。
+    const supported = resource === "credentials"
+      ? attached.supportsCredentialConfig
+      : attached.supportsProxyConfig;
+    if (!supported) {
+      throw new RetrievalError(
+        "CONFIG_UNSUPPORTED",
+        `Secure connection or ${resource} config support is required`,
+        { retryable: false },
+      );
     }
 
     const runnerPending = [...this.pending.values()]
@@ -112,6 +159,7 @@ export class RunnerConfigChannel {
       messageId: createId("msg"),
       requestId,
       runnerId: runtimeId,
+      resource,
       kind: payload.kind,
       ...(isWrite && payload.write
         ? { write: payload.write, operationId: payload.write.operationId, expectedVersion: payload.write.expectedVersion }
@@ -119,7 +167,7 @@ export class RunnerConfigChannel {
       timestamp: Date.now(),
     };
 
-    return new Promise<SafeProxyConfig>((resolve, reject) => {
+    return new Promise<SafeProxyConfig | SafeCredentialConfig>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
         reject(new RetrievalError(
@@ -131,7 +179,7 @@ export class RunnerConfigChannel {
         ));
       }, this.timeoutMs);
 
-      this.pending.set(requestId, { resolve, reject, timer, runtimeId, isWrite });
+      this.pending.set(requestId, { resolve, reject, timer, runtimeId, resource, isWrite });
 
       try {
         attached.socket.send(JSON.stringify(message));

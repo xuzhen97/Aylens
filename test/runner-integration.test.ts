@@ -142,7 +142,7 @@ describe("Gateway/Runner integration", () => {
       },
     });
 
-    const runtime = await createRunnerRuntime(runnerConfig);
+    const runtime = await createRunnerRuntime(runnerConfig, { proxyConfig: undefined, credentials: undefined });
     runner = new AylensRunner(runnerConfig, runtime);
     await runner.connect();
 
@@ -225,12 +225,17 @@ describe("Gateway/Runner integration", () => {
       browserProfiles: {},
     });
 
-    const runtime = await createRunnerRuntime(runnerConfig);
+    const runtime = await createRunnerRuntime(runnerConfig, { proxyConfig: undefined, credentials: undefined });
     runner = new AylensRunner(runnerConfig, runtime);
     await runner.connect();
 
     expect(context.runtimes.get("plugin-runner")?.capabilities.providerTypes)
       .toContain("fixture-remote");
+
+    // 心跳必须上报每个已部署 Provider 的真实操作能力;
+    // Gateway 据此拒绝向未声明 extract 的 Runner 派发提取任务。
+    expect(context.runtimes.get("plugin-runner")?.capabilities.providerOperations)
+      .toEqual({ remoteFixture: ["search"] });
 
     const result = await context.search.search({ query: "plugin-query" });
 

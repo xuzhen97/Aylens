@@ -104,6 +104,8 @@ export type AdminOverview = {
       }>;
       providerStates?: Record<string, AdminOverview["providers"][number]["auth"]>;
       proxyConfig?: boolean;
+      /** API 凭据池管理能力；旧 Runner 缺省 false，界面只读。 */
+      credentialConfig?: boolean;
       http: boolean;
       browserAutomation: boolean;
     };

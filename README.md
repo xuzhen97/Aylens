@@ -22,6 +22,9 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway，使用 No
 - Runtime-local browser proxy
 - url-fetch：HTTP 优先的 URL 抓取（原生 Markdown 协商 → 静态提取 → 浏览器最后兜底）
 - x-search：X 原生查询、Latest Post 提取、人工登录状态检测
+- tavily：API 检索的 Search / Extract 双能力，不依赖浏览器（API-only Runner 可跑）
+- 独立的 Extract 契约（逐 URL 成功/失败，不与 Search 混用）
+- Runner API 凭据池：多 Key 轮询、分层限流、在线管理与热更新
 - 内存 Audit
 - Admin UI
 - MCP tool adapter definitions
@@ -43,6 +46,8 @@ AI Agent
 ```
 
 Proxy credential、Chrome Profile、Cookie、Local Storage 等敏感状态只存在于 Runner。
+API Key 及凭据池同样只存在于 Runner（见 [docs/providers.md](./docs/providers.md)），与浏览器
+资源完全独立——API Provider 不启动 Chrome、不占 Profile。
 Gateway 不访问目标网站、不创建 Transport、不启动 Chrome、不持有登录态；没有在线 Runner 时
 搜索返回明确的“无可用执行节点”错误，不做本地回退。
 
@@ -206,12 +211,15 @@ GET  /health
 GET  /ready
 
 POST /v1/search
+POST /v1/extract
 GET  /v1/providers
 POST /v1/providers/:providerId/auth/check
 POST /v1/providers/:providerId/auth/login
 GET  /v1/runtimes
 GET  /v1/audit/:requestId
 GET  /v1/admin/overview
+GET  /v1/admin/runners/:runnerId/credentials
+POST /v1/admin/runners/:runnerId/credentials
 ```
 
 受保护的 /v1/* HTTP API 使用：
@@ -231,9 +239,11 @@ MCP 当前只提供 tool adapter definitions，还没有完整 MCP SDK server / 
 ```text
 /admin               系统总览
 /admin/runtimes      Runtime / Runner
-/admin/providers     Providers
-/admin/profiles      Browser Profiles
-/admin/audits        检索审计
+/admin/providers      Providers
+/admin/profiles       Browser Profiles
+/admin/proxies        代理配置
+/admin/credentials    API 凭据（多 Key 池，与浏览器无关）
+/admin/audits         检索审计
 /admin/tester        请求测试
 ```
 

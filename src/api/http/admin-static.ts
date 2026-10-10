@@ -13,6 +13,9 @@ const ADMIN_PAGES = [
   "/admin/providers",
   "/admin/profiles",
   "/admin/proxies",
+  // API 凭据管理页。这份白名单与前端路由是两份独立真相源，
+  // 漏加只会表现为 404（无编译或测试信号），两侧必须同步。
+  "/admin/credentials",
   "/admin/audits",
   "/admin/tester",
 ] as const;

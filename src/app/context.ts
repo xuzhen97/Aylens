@@ -13,6 +13,7 @@ import { ConfigOperationStore } from "../audit/config-operation-store.js";
 import { RunnerConfigChannel } from "../runtime/runner-config-channel.js";
 import { ProviderRouter } from "../search/router.js";
 import { SearchService } from "../search/search-service.js";
+import { ExtractService } from "../extract/extract-service.js";
 
 /**
  * Gateway 上下文：仅负责控制面。
@@ -31,6 +32,7 @@ export interface GatewayContext {
   configOperations: ConfigOperationStore;
   configChannel: RunnerConfigChannel;
   search: SearchService;
+  extract: ExtractService;
   /** 幂等关闭:释放数据库句柄与清理定时器;测试可不调用。 */
   close(): void;
 }
@@ -78,7 +80,20 @@ export function createGatewayContext(
 
   const router = new ProviderRouter(config);
   const search = new SearchService(router, dispatcher, audit);
+  const extract = new ExtractService(router, dispatcher, audit);
   const configChannel = new RunnerConfigChannel();
 
-  return { config, providers, runtimes, runnerSessions, dispatcher, audit, configOperations, configChannel, search, close };
+  return {
+    config,
+    providers,
+    runtimes,
+    runnerSessions,
+    dispatcher,
+    audit,
+    configOperations,
+    configChannel,
+    search,
+    extract,
+    close,
+  };
 }

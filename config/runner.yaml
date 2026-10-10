@@ -7,6 +7,9 @@ plugins:
   modules:
     - "builtin:url-fetch"
     - "builtin:x-search"
+    # API 检索 Provider：不依赖浏览器，但需要凭据池中至少一把可用 Key。
+    # 未绑定池时会明确返回 PROVIDER_UNAVAILABLE，不会匿名或无认证调用。
+    - "builtin:tavily"
 
 browser:
   # url-fetch 只在静态获取不足时最后尝试浏览器，并复用这个持久化 Profile 的登录态。
@@ -39,6 +42,20 @@ providers:
       httpTimeoutMs: 25000
   x:
     type: x-search
+  # Tavily：直接调用 HTTPS API，不占浏览器 Profile、不启动 Chrome。
+  # API Key 不写在这里 —— 在 /admin → API 凭据 页面添加并绑定到本池。
+  # 真正的 Key 池绑定在 Runner SQLite（数据库是唯一权威来源）。
+  tavily:
+    type: tavily
+    transport:
+      primary: direct
+      fallback: []
+    # options 全部可选，但未知键会报错（不静默忽略）：
+    #   search_depth  basic | advanced（advanced 费用更高）
+    #   topic         general | news | finance
+    #   include_usage 布尔：是否在响应里带用量信息
+    #   extract_depth basic | advanced
+    options: {}
 
 transports:
   # url-fetch 未配置 provider.transport 时默认用 direct，因此这里必须显式声明：

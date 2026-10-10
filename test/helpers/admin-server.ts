@@ -18,6 +18,9 @@ export function createAdminTestServer(overrides: {
   apiKey?: string;
   publicOrigin?: string;
   trustProxy?: string[];
+  /** 需要派发到 Provider 的测试用：缺省仍为 {}，不影响既有用例。 */
+  providers?: Record<string, { type: string; enabled?: boolean }>;
+  routes?: Record<string, { providers: string[] }>;
 } = {}) {
   const config = appConfigSchema.parse({
     version: 1,
@@ -30,8 +33,8 @@ export function createAdminTestServer(overrides: {
     },
     auth: { apiKey: overrides.apiKey ?? "admin-test-key", runnerTokens: {} },
     runtimeRegistry: { heartbeatTimeoutMs: 1000, offlineAfterMs: 5000, jobTimeoutMs: 1000 },
-    providers: {},
-    routes: { default: { providers: [] } },
+    providers: overrides.providers ?? {},
+    routes: overrides.routes ?? { default: { providers: [] } },
   });
   const context = createGatewayContext(config);
   const app = buildHttpServer(context, {

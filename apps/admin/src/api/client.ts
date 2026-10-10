@@ -1,5 +1,6 @@
 import type { AdminOverview, ApiError, ProviderAuthResponse, SearchRequest, SearchResponse, SessionInfo } from "./types";
 import type { ProxyWrite, SafeProxyConfig } from "./proxy-types";
+import type { CredentialWrite, SafeCredentialConfig, ProviderUsageReport, ProviderUsageResponse } from "./credential-types";
 
 type ClientOptions = {
   fetchImpl?: typeof fetch;
@@ -94,6 +95,30 @@ export function createAdminClient(options: ClientOptions) {
         body: JSON.stringify(write),
         ...(signal ? { signal } : {}),
       }, true);
+    },
+    credentialConfig(runnerId: string, signal?: AbortSignal): Promise<SafeCredentialConfig> {
+      return request(`/v1/admin/runners/${encodeURIComponent(runnerId)}/credentials`, {
+        ...(signal ? { signal } : {}),
+      });
+    },
+    writeCredentialConfig(
+      runnerId: string,
+      write: CredentialWrite,
+      signal?: AbortSignal,
+    ): Promise<SafeCredentialConfig> {
+      return request(`/v1/admin/runners/${encodeURIComponent(runnerId)}/credentials`, {
+        method: "POST",
+        body: JSON.stringify(write),
+        ...(signal ? { signal } : {}),
+      }, true);
+    },
+    /** 用量查询：由 Gateway 解析到声明了该能力的 Runner；不支持时会抛带错误码的异常。 */
+    async providerUsage(providerId: string, signal?: AbortSignal): Promise<ProviderUsageReport> {
+      const wrapped = await request<ProviderUsageResponse>(`/v1/providers/${encodeURIComponent(providerId)}/usage`, {
+        method: "POST",
+        ...(signal ? { signal } : {}),
+      }, true);
+      return wrapped.usage;
     },
   };
 }

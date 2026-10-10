@@ -1,6 +1,7 @@
 import type { ProviderConfig, ProviderDeploymentConfig } from "../config/schema.js";
 import { RetrievalError } from "../core/errors.js";
 import type {
+  ProviderCapability,
   ProviderDefinition,
   ProviderFactory,
   ProviderFactoryContext,
@@ -45,6 +46,26 @@ export class ProviderRegistry {
 
   supportsAuth(type: string): boolean {
     return this.factories.get(type)?.authControl === true;
+  }
+
+  /** 该 type 是否有已加载的实现。用于能力上报：未加载就不上报，不让心跳抛错。 */
+  hasFactory(type: string): boolean {
+    return this.factories.has(type);
+  }
+
+  /**
+   * Provider type 声明的操作能力。未知 type 明确失败(fail closed),
+   * 不假定 search:否则未实现的 extract 会被当成支持并错误派发。
+   */
+  capabilitiesOf(type: string): readonly ProviderCapability[] {
+    const factory = this.factories.get(type);
+    if (!factory) {
+      throw new RetrievalError(
+        "PROVIDER_UNAVAILABLE",
+        `No implementation registered for provider type: ${type}`,
+      );
+    }
+    return factory.capabilities;
   }
 
   factoryTypes(): string[] {

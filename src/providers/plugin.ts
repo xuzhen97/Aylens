@@ -5,8 +5,10 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { strFromU8, unzipSync } from "fflate";
 import type { ProviderFactory } from "./types.js";
+import { PROVIDER_CAPABILITIES } from "./types.js";
 import urlFetchPlugin from "./url-fetch/index.js";
 import xSearchPlugin from "./x-search/index.js";
+import tavilyPlugin from "./tavily/index.js";
 
 export interface ProviderPlugin {
   name: string;
@@ -31,6 +33,7 @@ interface ProviderPackageManifest {
 const BUILTIN_PLUGINS = new Map<string, ProviderPlugin>([
   ["builtin:url-fetch", urlFetchPlugin],
   ["builtin:x-search", xSearchPlugin],
+  ["builtin:tavily", tavilyPlugin],
 ]);
 
 function resolveFileReference(moduleRef: string, baseDir: string): string {
@@ -57,6 +60,17 @@ function validatePlugin(value: unknown, moduleRef: string): ProviderPlugin {
   for (const factory of candidate.factories) {
     if (!factory || typeof factory !== "object" || typeof factory.type !== "string" || typeof factory.create !== "function") {
       throw new Error(`Invalid provider factory in plugin: ${moduleRef}`);
+    }
+    // capabilities 必须显式声明:缺少时不能假定只支持 search,
+    // 否则“声明了 extract 却没实现”会退化成运行时静默降级。
+    // 合法值从 PROVIDER_CAPABILITIES 派生,不再单独维护硬编码白名单。
+    const capabilities = (factory as { capabilities?: unknown }).capabilities;
+    if (!Array.isArray(capabilities)
+      || capabilities.length === 0
+      || capabilities.some((value) => !(PROVIDER_CAPABILITIES as readonly unknown[]).includes(value))) {
+      throw new Error(
+        `Provider factory in plugin must declare non-empty capabilities from [${PROVIDER_CAPABILITIES.join(", ")}]: ${moduleRef} (${factory.type})`,
+      );
     }
   }
 

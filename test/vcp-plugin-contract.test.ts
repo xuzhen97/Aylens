@@ -42,6 +42,8 @@ const KNOWN_PARAMS = new Set([
   "sources",
   "limit",
   "language",
+  "urls",
+  "content",
   "providerId",
   "confirm",
   "requestId",

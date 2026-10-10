@@ -8,6 +8,7 @@ import { RuntimesPage } from "./pages/runtimes";
 import { ProvidersPage } from "./pages/providers";
 import { ProfilesPage } from "./pages/profiles";
 import { ProxiesPage } from "./pages/proxies";
+import { CredentialsPage } from "./pages/credentials";
 import { AuditsPage } from "./pages/audits";
 import { TesterPage } from "./pages/tester";
 
@@ -41,6 +42,7 @@ export function App() {
         <Route path="/providers" element={<ProvidersPage />} />
         <Route path="/profiles" element={<ProfilesPage />} />
         <Route path="/proxies" element={<ProxiesPage />} />
+        <Route path="/credentials" element={<CredentialsPage />} />
         <Route path="/audits" element={<AuditsPage />} />
         <Route path="/tester" element={<TesterPage />} />
       </Route>

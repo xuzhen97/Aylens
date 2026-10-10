@@ -383,6 +383,51 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 - Runtime 本地环境变量
 - Browser Profile 是否引用了正确 Transport
 
+## 10.1 API 凭据常见故障
+
+凭据池与浏览器完全无关：Tavily 这类 API Provider **不启动 Chrome、不占 Profile**，
+排障时不需要检查 Profile 或登录态。详见 [providers.md](./providers.md)。
+
+### API 凭据页显示“不支持凭据管理”
+
+说明该 Runner 未接入权威配置库，或版本过旧不带 `credentialConfig` 能力：
+
+- 确认 Runner 是通过 `loadRunnerStartup()` 启动的（不是只读 YAML 的旧入口），
+  否则 `capabilities.credentialConfig` 恒为 false；
+- 只能查看不能写入是预期行为，不是权限问题。
+
+### 搜索返回 PROVIDER_UNAVAILABLE
+
+按 `details.reason` 分流：
+
+| reason | 含义 | 处置 |
+| --- | --- | --- |
+| `pool_missing` | 该 Provider 未绑定池 | `/admin → API 凭据` 里绑定 |
+| `pool_disabled` | 池被停用 | 启用池 |
+| `no_credentials` | 池里没有 Key | 添加 Key |
+| `all_disabled` | 所有 Key 被停用 | 逐个确认后启用 |
+| `auth_failed` | 上游判为无效 Key | 替换 Key（不是重试） |
+| `quota_blocked` | 额度耗尽 | 充值或换账号，不要盲换同组 Key |
+| `cooling` | 冷却中 | 等 Retry-After 结束或人工 `clear-state` |
+
+**同一账号的 Key 共享限流**：429/432/433 按 scope 归类，`account` 范围时不会继续轮换
+同组 Key —— 这时换 Key 也一样被拒，属于预期行为。
+
+### 明文与存储
+
+Runner 数据库持有明文 Key，**第一期未做静态加密**：数据库与备份必须当作敏感文件保护；
+日志、审计、Gateway 响应里都不应出现 Key。若看到，属于安全缺陷，需要上报。
+
+### 验证
+
+```bash
+pnpm vitest run --config vitest.config.ts test/api-only-runner.test.ts test/tavily-release.test.ts test/provider-compat.test.ts
+```
+
+三者分别证明：无浏览器 Runner 能完整装载凭据服务并执行搜索；Tavily 独立 Provider
+包在源码目录外也能加载（漏打包的依赖会以 MODULE_NOT_FOUND 暴露）；公共层能承接
+不同形状的服务商（批量上限、单 URL、业务失败码），而不是预设 Tavily 的形状。
+
 ## 11. 最终验收清单
 
 建议确认：
@@ -398,7 +443,9 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 9. 人工登录后 authenticated page 能读取；
 10. Runner 重启后 persistent profile 登录态仍存在；
 11. Admin UI 不暴露 API Key、Runner Token、代理密码、本地 Chrome 路径；
-12. `Admin → 代理配置` 能读取到 Runner 的代理与绑定，且写入后版本号递增、重启 Runner 后仍然保留。
+12. `Admin → 代理配置` 能读取到 Runner 的代理与绑定，且写入后版本号递增、重启 Runner 后仍然保留；
+13. `Admin → API 凭据` 能读取脱敏列表（只有 `maskedSecret`，无明文），写入后版本递增，重启 Runner 后仍保留；
+14. `/v1/extract` 需显式 `sources`，缺省时报 `INVALID_REQUEST` 而不是默认调用全部提取服务。
 
 ### 生命周期保障
 

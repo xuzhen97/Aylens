@@ -87,7 +87,7 @@ describe("AylensRunner reconnect", () => {
     });
 
     const config = runnerConfig(`ws://127.0.0.1:${port}/v1/runners/connect`);
-    runner = new AylensRunner(config, await createRunnerRuntime(config), {
+    runner = new AylensRunner(config, await createRunnerRuntime(config, { proxyConfig: undefined, credentials: undefined }), {
       reconnect: { baseDelayMs: 20, maxDelayMs: 40 },
     });
 
@@ -104,7 +104,7 @@ describe("AylensRunner reconnect", () => {
     // 此时 Gateway 尚未启动：连接尝试必须明确失败并持续重试，不能让 Promise 永久挂起。
     const failures: number[] = [];
     const config = runnerConfig("ws://127.0.0.1:9/v1/runners/connect");
-    runner = new AylensRunner(config, await createRunnerRuntime(config), {
+    runner = new AylensRunner(config, await createRunnerRuntime(config, { proxyConfig: undefined, credentials: undefined }), {
       reconnect: { baseDelayMs: 10, maxDelayMs: 20 },
       lifecycle: {
         connectionFailed: (_error, attempt) => failures.push(attempt),
@@ -126,7 +126,7 @@ describe("AylensRunner reconnect", () => {
     });
 
     const config = runnerConfig(`ws://127.0.0.1:${port}/v1/runners/connect`);
-    runner = new AylensRunner(config, await createRunnerRuntime(config), {
+    runner = new AylensRunner(config, await createRunnerRuntime(config, { proxyConfig: undefined, credentials: undefined }), {
       reconnect: { baseDelayMs: 20, maxDelayMs: 40 },
     });
 

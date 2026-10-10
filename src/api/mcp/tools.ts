@@ -18,6 +18,17 @@ const searchInput = z.object({
   language: z.string().optional(),
 });
 
+/** Extract 与 Search 分离：必须显式给出来源，不复用 search 的路由默认值。 */
+const extractInput = z.object({
+  urls: z.array(z.string().min(1)).min(1).max(100),
+  sources: z.array(z.string().min(1)).min(1),
+  limit: z.number().int().positive().max(100).optional(),
+  content: z.object({
+    format: z.enum(["markdown", "text"]).optional(),
+    maxChars: z.number().int().positive().optional(),
+  }).optional(),
+});
+
 const providerIdInput = z.object({ providerId: z.string().min(1) });
 const loginInput = z.object({ providerId: z.string().min(1), confirm: z.string().min(1) });
 const auditInput = z.object({ requestId: z.string().min(1) });
@@ -38,6 +49,13 @@ export function createMcpTools(context: GatewayContext): McpToolDefinition[] {
       description: "Search configured retrieval providers through the Aylens gateway.",
       inputSchema: searchInput,
       execute: async (input) => context.search.search(searchInput.parse(input)),
+    },
+    {
+      name: "extract",
+      description:
+        "Extract full content for explicit URLs. Requires an explicit provider source; returns per-URL success/failure.",
+      inputSchema: extractInput,
+      execute: async (input) => context.extract.extract(extractInput.parse(input)),
     },
     {
       name: "get_status",

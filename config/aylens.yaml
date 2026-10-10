@@ -10,6 +10,11 @@ providers:
     type: url-fetch
   x:
     type: x-search
+  # API 检索 Provider。默认 disabled：没配 Key 时不该默认发起付费调用；
+  # 在 Admin 启用并绑定 Runner 凭据池后才会参与路由。
+  tavily:
+    type: tavily
+    enabled: false
 
 routes:
   default:
@@ -18,3 +23,7 @@ routes:
   x:
     providers:
       - x
+  # 显式路由：调用方需要 API 搜索时用 route: "tavily" 或 sources: ["tavily"]。
+  tavily:
+    providers:
+      - tavily

@@ -2,12 +2,16 @@ import { loadRunnerStartup } from "./config.js";
 import { AylensRunner } from "./runner.js";
 import { createRunnerRuntime } from "./runtime.js";
 
-// 必须走权威启动装载:它打开 Runner 数据库、首次导入 YAML 代理并组装 ProxyConfigService。
-// 只读 YAML(config-only)会让 runtime.proxyConfig 为 undefined,Runner 上报
-// capabilities.proxyConfig=false,Gateway 一律拒绝其配置请求(CONFIG_UNSUPPORTED)。
+// 必须走权威启动装载:它打开 Runner 数据库、首次导入 YAML 代理并组装 ProxyConfigService
+// 与 CredentialConfigService。两个服务都必须显式传入:
+// 漏传任一会让 capabilities.proxyConfig / credentialConfig 恒为 false,
+// Gateway 会拒绝对应的管理请求(编译期先拦住,不靠运行时发现)。
 const startup = await loadRunnerStartup();
 const { config } = startup;
-const runtime = await createRunnerRuntime(config, { proxyConfig: startup.service });
+const runtime = await createRunnerRuntime(config, {
+  proxyConfig: startup.service,
+  credentials: startup.credentialService,
+});
 
 const runner = new AylensRunner(config, runtime, {
   lifecycle: {

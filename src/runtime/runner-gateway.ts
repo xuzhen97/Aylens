@@ -10,12 +10,30 @@ import {
 import type { RuntimeRegistry } from "./registry.js";
 import type { RunnerSessionManager } from "./runner-session-manager.js";
 import { upgradeIsSecureOrLocal } from "../api/http/config-channel-security.js";
-import type { RunnerConfigChannel } from "./runner-config-channel.js";
+import type { RunnerConfigChannel, ConfigChannelAttachMetadata } from "./runner-config-channel.js";
 
 function safeTokenEqual(expected: string, actual: string): boolean {
   const a = Buffer.from(expected);
   const b = Buffer.from(actual);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * 配置通道能力元数据的**唯一派生点**。
+ *
+ * REGISTER 与 HEARTBEAT 共用它：两处各写一份时，新增一个能力很容易只改一处，
+ * 而漏改的那处会静默降级成“该能力不存在”（凭据配置就这样中过一次，
+ * 表现为浏览器里永远 CONFIG_UNSUPPORTED）。
+ */
+function configChannelMetadata(
+  capabilities: { proxyConfig?: boolean | undefined; credentialConfig?: boolean | undefined },
+  secureOrLocal: boolean,
+): ConfigChannelAttachMetadata {
+  return {
+    secureOrLocal,
+    supportsProxyConfig: capabilities.proxyConfig === true,
+    supportsCredentialConfig: capabilities.credentialConfig === true,
+  };
 }
 
 export function attachRunnerGateway(options: {
@@ -98,10 +116,11 @@ export function attachRunnerGateway(options: {
           lastSeenAt: Date.now(),
         });
         options.sessions.attach(message.runnerId, socket);
-        options.configChannel.attach(message.runnerId, socket, {
-          secureOrLocal,
-          supportsProxyConfig: message.capabilities.proxyConfig === true,
-        });
+        options.configChannel.attach(
+          message.runnerId,
+          socket,
+          configChannelMetadata(message.capabilities, secureOrLocal),
+        );
 
         socket.send(JSON.stringify({
           type: "REGISTERED",
@@ -129,10 +148,11 @@ export function attachRunnerGateway(options: {
           lastSeenAt: Date.now(),
         });
         // 心跳同时刷新能力声明:同一 socket 下attach 只覆盖 metadata,不重建会话。
-        options.configChannel.attach(runnerId, socket, {
-          secureOrLocal,
-          supportsProxyConfig: message.capabilities.proxyConfig === true,
-        });
+        options.configChannel.attach(
+          runnerId,
+          socket,
+          configChannelMetadata(message.capabilities, secureOrLocal),
+        );
         return;
       }
 
