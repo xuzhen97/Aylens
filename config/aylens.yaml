@@ -15,6 +15,10 @@ providers:
   tavily:
     type: tavily
     enabled: false
+  # Exa 同为 API 检索 Provider，默认 disabled：没配 Key 时不该默认发起付费调用。
+  exa:
+    type: exa
+    enabled: false
 
 routes:
   default:
@@ -27,3 +31,6 @@ routes:
   tavily:
     providers:
       - tavily
+  exa:
+    providers:
+      - exa

@@ -10,6 +10,7 @@ plugins:
     # API 检索 Provider：不依赖浏览器，但需要凭据池中至少一把可用 Key。
     # 未绑定池时会明确返回 PROVIDER_UNAVAILABLE，不会匿名或无认证调用。
     - "builtin:tavily"
+    - "builtin:exa"
 
 browser:
   # url-fetch 只在静态获取不足时最后尝试浏览器，并复用这个持久化 Profile 的登录态。
@@ -55,6 +56,21 @@ providers:
     #   topic         general | news | finance
     #   include_usage 布尔：是否在响应里带用量信息
     #   extract_depth basic | advanced
+    options: {}
+  # Exa：同样直接调用 HTTPS API，不占浏览器 Profile、不启动 Chrome。
+  # API Key 不写在这里 —— 在 /admin → API 凭据 页面添加并绑定到本池（服务名 exa）。
+  exa:
+    type: exa
+    transport:
+      primary: direct
+      fallback: []
+    # options 全部可选，但未知键会报错（不静默忽略）。
+    # Search 可用：type / category / userLocation / numResults / includeDomains /
+    #             excludeDomains / start|endCrawlDate / start|endPublishedDate /
+    #             includeText / excludeText / moderation / contents
+    # Contents 可用：text / summary / highlights / maxAgeHours
+    # 刻意不支持：livecrawl*（已弃用，改用 maxAgeHours）、context（已弃用）、
+    #             outputSchema / additionalQueries（deep search 产物我们不会消费）。
     options: {}
 
 transports:

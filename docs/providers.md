@@ -294,7 +294,7 @@ src/providers/tavily/
 
 ### 与浏览器完全无关
 
-Tavily（以及后续接入的 Exa、AnySearch）都是**直接调用 HTTPS API**：
+Tavily、Exa（以及后续接入的 AnySearch）都是**直接调用 HTTPS API**：
 
 - 不获取 Browser Profile、不占用 Profile Lease、不启动 Chrome、不用 Cookie；
 - 请求走 Runner 的 HTTP Transport（可用 `providers.tavily.transport` 指定代理）；
@@ -339,13 +339,13 @@ Tavily（以及后续接入的 Exa、AnySearch）都是**直接调用 HTTPS API*
 | 形状 | 差异点 |
 | --- | --- |
 | Tavily | 原生批次 20；成败看 HTTP 状态 |
-| Exa 类 | 原生批次可达 100；同 Team 共享限流与余额 |
+| Exa | 原生批次 100；提取用 `statuses` 逐 URL 表达成败；正文只有纯文本 |
 | AnySearch 类 | 每次只取 1 个 URL（须自行有界并发）；HTTP 200 仍可能带业务失败码 |
 
 “能承接新服务商”不是口头承诺：`test/provider-compat.test.ts` 用测试替身
 逐项证明公共层不预设 Tavily 的形状（100 URL 不被迫拆批、单 URL 适配器并发受限、
 业务码失败会落到凭据池），`test/credential-pool.test.ts` 证明账号级限流不轮换同组 Key。
-替身仅用于测试，**不是可上线的 Exa / AnySearch 实现**。
+替身仅用于测试，**不是可上线的 AnySearch 实现**（Exa 已有真实实现，见下节）。
 
 ### 调用示例
 
@@ -376,6 +376,111 @@ POST /v1/extract { "urls": ["https://example.com/a"], "sources": ["tavily"] }
 Runner 数据库持有明文 Key，第一期**未做应用层静态加密**，数据库与备份必须按敏感
 文件保护，不能宣称已加密。凭据池只协调本 Runner 的流量；多 Runner 共用同一账号时
 本地限流不是全局限制。
+
+
+## Exa（API 检索）
+
+仓库包含：
+
+```text
+src/providers/exa/
+```
+
+同样是 Aylens 官方内置的 API 型 Provider，两个独立能力：
+
+- **Search**：`POST https://api.exa.ai/search`；
+- **Extract**：`POST https://api.exa.ai/contents`，按显式 URL 列表取正文。
+
+与 Tavily 一样不碰浏览器：不取 Profile、不占 Lease、不启动 Chrome、不用 Cookie，
+可用完全不带 Browser Profile 的 API-only Runner。
+
+### 与 Tavily 的差异（全部留在适配器里）
+
+| 维度 | Tavily | Exa |
+| --- | --- | --- |
+| 认证头 | `Authorization: Bearer` | `x-api-key` |
+| 提取端点 | `/extract`（`results` + `failed_results`） | `/contents`（`results` + `statuses`） |
+| 原生批次 | 20 | 100 |
+| 正文格式 | 可选 Markdown（`raw_content`） | **只有纯文本** |
+| 时效控制 | `days` / `time_range` | `maxAgeHours`（`livecrawl*` 已弃用） |
+| 费用 | `usage.credits` | `costDollars.total`（USD） |
+| 用量端点 | `/usage`（官方统计） | **无**（在独立的 Team Management API，需额外 service key） |
+
+因为普通 Key 查不到用量，Exa 适配器**不声明 `usage` 能力**：上层会明确显示「不支持」，
+而不是发一次付费请求再拿 0 充数。费用只按响应事实上报
+（`extensions.usageCostUsd`，单位 USD）——**响应估算不是账单，也不能与 Tavily 的
+credits 直接比较**。
+
+### 内容范围与格式
+
+| 调用方要求 | 发给 Exa 的 `contents` | 结果标注 |
+| --- | --- | --- |
+| 不要求正文 | 不发 `contents` | 只有元数据与高亮（最省） |
+| `mode: summary` | `{ summary: true }` | `contentScope: summary`，生成摘要放 `extensions.providerGeneratedSummary` |
+| `mode: full` | `{ text: true }` | `contentScope: full` |
+| `mode: full` + `maxChars` | `{ text: { maxCharacters } }` | `contentScope: truncated` |
+
+**`markdown` 字段永不填充**：Exa 不产出 Markdown，`text` 是纯文本。调用方要
+`format: markdown` 时，结果里会同时出现 `extensions.contentFormat: "text"` 与
+`extensions.requestedFormat: "markdown"`，把降级如实暴露出来，而不是假装满足。
+要了全文但上游没给时标 `contentUnavailable`，不谎称 `full`。
+
+### 参数白名单
+
+请求级选项写在 `providerOptions.exa` 下，未知键直接报错，不静默忽略：
+
+- Search：`type` / `category` / `userLocation` / `numResults` / `includeDomains` /
+  `excludeDomains` / `start|endCrawlDate` / `start|endPublishedDate` / `includeText` /
+  `excludeText` / `moderation` / `contents`；
+- Contents：`text` / `summary` / `highlights` / `maxAgeHours`。
+
+刻意**不放行**：`livecrawl` / `livecrawlTimeout`（官方已弃用，改用 `maxAgeHours`）、
+`context`（已弃用）、`outputSchema` / `additionalQueries`（deep search 专用，其产物
+`output` 不在我们的文档契约里 —— 放行等于静默丢数据）。
+
+`contents` 的优先级：通用 `content.mode` 派生值 < 部署层 `contents` < 请求级
+`providerOptions.exa.contents`。`contents` 必须是对象：布尔简写无法与部署默认做字段级
+合并，写错形状会被明确拒绝。
+
+### 错误与凭据范围
+
+| 状态 | category | scope | 对外错误码 |
+| --- | --- | --- | --- |
+| 400 / 422 | invalid_request | request | `INVALID_REQUEST`（不可重试） |
+| 401 | auth | credential | `UPSTREAM_AUTH_FAILED` |
+| 402 | quota | credential | `PROVIDER_UNAVAILABLE`（不可重试） |
+| 429 | rate_limited | credential（遵守 `Retry-After`） | `RATE_LIMITED`（可重试） |
+| 403 | permission | unknown | `UPSTREAM_ERROR` |
+| 5xx | upstream | service | `UPSTREAM_ERROR`（可重试） |
+
+402 官方语义是「账号 credits 用尽**或**某把 Key 的预算超限」，429 是「Key、Team 或
+网络超限」—— 两者都无法从响应中区分，因此沿用 Tavily 432 的判例：**范围不明时只隔离
+当前 Key**，不让模糊信息封掉整个账号组。代价如实说明：若上游真是账号级耗尽，池内每把
+Key 各失败一次后收敛为全部阻断（有界，不会无限轮换）；反之若只是单把 Key 预算超限，
+其余 Key 照常工作。
+
+逐 URL 失败按输入端索引对齐，`statuses[].error.tag` 只映射成本地固定文案：
+`CRAWL_TIMEOUT` / `CRAWL_LIVECRAWL_TIMEOUT` → `TIMEOUT`（可重试），
+`UNSUPPORTED_URL` → `INVALID_REQUEST`，其余（含未知 tag）→ `CONTENT_UNAVAILABLE`。
+上游 `error` 原文一律不进响应、不进日志、不进审计。
+
+### 已知限制
+
+- 通用字段 `language` 在 Exa 没有对应参数，**被忽略**（不报错）：否则
+  `sources: ["tavily", "exa"]` 这类多源搜索会被单个 Provider 拖死；
+- 正文只有纯文本，见上文；
+- Team Management API（正式用量/账单）是独立服务，需要额外的 service key，
+  第一期不接入，也不因此让普通检索 Key 承担管理权限。
+
+### 调用示例
+
+```json
+POST /v1/search  { "query": "OpenAI 发布", "sources": ["exa"], "limit": 5 }
+POST /v1/extract { "urls": ["https://example.com/a"], "sources": ["exa"] }
+```
+
+Gateway 默认把 `exa` 设为 `enabled: false`，需在 Admin 启用并绑定 Runner 凭据池
+（服务名 `exa`）后才会参与路由。
 
 
 ## 人工登录态

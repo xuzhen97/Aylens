@@ -9,6 +9,7 @@ import { PROVIDER_CAPABILITIES } from "./types.js";
 import urlFetchPlugin from "./url-fetch/index.js";
 import xSearchPlugin from "./x-search/index.js";
 import tavilyPlugin from "./tavily/index.js";
+import exaPlugin from "./exa/index.js";
 
 export interface ProviderPlugin {
   name: string;
@@ -34,6 +35,7 @@ const BUILTIN_PLUGINS = new Map<string, ProviderPlugin>([
   ["builtin:url-fetch", urlFetchPlugin],
   ["builtin:x-search", xSearchPlugin],
   ["builtin:tavily", tavilyPlugin],
+  ["builtin:exa", exaPlugin],
 ]);
 
 function resolveFileReference(moduleRef: string, baseDir: string): string {

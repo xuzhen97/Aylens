@@ -427,8 +427,10 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 | `quota_blocked` | 额度耗尽 | 充值或换账号，不要盲换同组 Key |
 | `cooling` | 冷却中 | 等 Retry-After 结束或人工 `clear-state` |
 
-**同一账号的 Key 共享限流**：429/432/433 按 scope 归类，`account` 范围时不会继续轮换
-同组 Key —— 这时换 Key 也一样被拒，属于预期行为。
+**同一账号的 Key 共享限流**：Tavily 的 429/432/433 按 scope 归类，`account` 范围时不会
+继续轮换同组 Key —— 这时换 Key 也一样被拒，属于预期行为。Exa 的 402/429 都归
+`credential` 范围（上游无法区分「账号余额」与「单 Key 预算」，故只隔离当前 Key）；
+若真是账号级耗尽，池内每把 Key 各失败一次后收敛为全部阻断，不会无限轮换。
 
 ### 明文与存储
 
@@ -438,12 +440,12 @@ Runner 数据库持有明文 Key，**第一期未做静态加密**：数据库�
 ### 验证
 
 ```bash
-pnpm vitest run --config vitest.config.ts test/api-only-runner.test.ts test/tavily-release.test.ts test/provider-compat.test.ts
+pnpm vitest run --config vitest.config.ts test/api-only-runner.test.ts test/tavily-release.test.ts test/exa-release.test.ts test/provider-compat.test.ts
 ```
 
-三者分别证明：无浏览器 Runner 能完整装载凭据服务并执行搜索；Tavily 独立 Provider
-包在源码目录外也能加载（漏打包的依赖会以 MODULE_NOT_FOUND 暴露）；公共层能承接
-不同形状的服务商（批量上限、单 URL、业务失败码），而不是预设 Tavily 的形状。
+四者分别证明：无浏览器 Runner 能完整装载凭据服务并执行搜索；Tavily 与 Exa 的独立
+Provider 包在源码目录外也能加载（漏打包的依赖会以 MODULE_NOT_FOUND 暴露）；公共层能
+承接不同形状的服务商（批量上限、单 URL、业务失败码），而不是预设 Tavily 的形状。
 
 ## 11. 最终验收清单
 

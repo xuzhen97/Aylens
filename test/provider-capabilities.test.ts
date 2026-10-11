@@ -3,6 +3,8 @@ import { ProviderRegistry } from "../src/providers/registry.js";
 import type { ProviderFactory } from "../src/providers/types.js";
 import urlFetchPlugin from "../src/providers/url-fetch/index.js";
 import xSearchPlugin from "../src/providers/x-search/index.js";
+import tavilyPlugin from "../src/providers/tavily/index.js";
+import exaPlugin from "../src/providers/exa/index.js";
 
 function searchOnly(type: string): ProviderFactory {
   return {
@@ -47,7 +49,12 @@ describe("provider capability declaration", () => {
   it("built-in plugins declare only the operations they implement", () => {
     const urlFactory = urlFetchPlugin.factories[0];
     const xFactory = xSearchPlugin.factories[0];
+    const tavilyFactory = tavilyPlugin.factories[0];
+    const exaFactory = exaPlugin.factories[0];
     expect(urlFactory?.capabilities).toEqual(["search"]);
     expect(xFactory?.capabilities).toEqual(["search"]);
+    expect(tavilyFactory?.capabilities).toEqual(["search", "extract", "usage"]);
+    // Exa 不声明 usage：普通 Key 没有用量端点。
+    expect(exaFactory?.capabilities).toEqual(["search", "extract"]);
   });
 });
