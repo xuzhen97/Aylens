@@ -36,6 +36,17 @@ function newOperationId(): string {
 }
 
 /**
+ * 池的显示标签：有名则「名称（id）」，无名或名字就等于 id 时退回 id。
+ *
+ * 显示名绝不能替代引用键：下拉的 value 始终是 pool.id，只有可见文本用名称 ——
+ * 否则改名之后引用就会跟着漂移。
+ */
+function poolLabel(pool: { id: string; name?: string | undefined }): string {
+  const name = pool.name?.trim();
+  return name !== undefined && name.length > 0 && name !== pool.id ? `${name}（${pool.id}）` : pool.id;
+}
+
+/**
  * API 凭据池管理：按 Runner 展示池与 Key 的脱敏状态并写入变更。
  *
  * 凭据与浏览器 Profile 是两套独立资源，这里不显示也不操作任何登录态。
@@ -75,7 +86,7 @@ export function CredentialsPage() {
     { pending?: boolean; report?: ProviderUsageReport; error?: string }
   >>({});
 
-  /** 新建池表单。服务创建后不可改，因此必须由人明确填写，不再前端写死。 */
+  /** 新建池表单。服务只能是本 Runner 已部署的 Provider type（下拉选择），不再前端写死。 */
   const [newPoolService, setNewPoolService] = useState("");
   const [newPoolName, setNewPoolName] = useState("");
   /** 非空表示正在给这个池改名（复用 put-pool，只改 name）。 */
@@ -203,6 +214,17 @@ export function CredentialsPage() {
   };
 
   /**
+   * 把池 ID 显示成名称。
+   *
+   * Key 行与 Provider 行只持有 poolId，若直接渲染裸 ID，则改名之后这两处
+   * 依旧是一串 pool_xxx —— 与池列表对不上，等于白改名。
+   */
+  const poolLabelOf = (poolId: string): string => {
+    const pool = config?.pools.find((candidate) => candidate.id === poolId);
+    return pool ? poolLabel(pool) : poolId;
+  };
+
+  /**
    * 某 Provider 可用的池：服务类型必须匹配。
    * 把跨服务商的池摆进下拉，只会让人点了才报“service does not match”。
    * 缺 service（旧 Runner / Store 视图）时退回展示全部池，不假设知道。
@@ -262,9 +284,6 @@ export function CredentialsPage() {
       .map((provider) => provider.service)
       .filter((service): service is string => Boolean(service)),
   )].sort();
-
-  const pendingService = newPoolService.trim();
-  const serviceNotDeployed = pendingService.length > 0 && !deployedServices.includes(pendingService);
 
   /**
    * 新建池。
@@ -447,13 +466,18 @@ export function CredentialsPage() {
                   <div className="flex flex-wrap items-end gap-3">
                     <label className="text-sm">
                       服务
-                      <input
-                        list="deployed-services"
+                      {/* 下拉而不是手填：服务取自本 Runner 已部署的 Provider type，
+                          手填只会招来拼写错误，而 service 创建后不可改。 */}
+                      <select
                         className="ml-2 rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={newPoolService}
                         onChange={(event) => setNewPoolService(event.target.value)}
-                        placeholder="tavily / exa"
-                      />
+                      >
+                        <option value="">选择服务</option>
+                        {deployedServices.map((service) => (
+                          <option key={service} value={service}>{service}</option>
+                        ))}
+                      </select>
                     </label>
                     <label className="text-sm">
                       池名称
@@ -473,18 +497,11 @@ export function CredentialsPage() {
                       新建池
                     </Button>
                   </div>
-                  <datalist id="deployed-services">
-                    {deployedServices.map((service) => <option key={service} value={service} />)}
-                  </datalist>
                   <p className="text-xs text-slate-500">
-                    服务必须与 Provider 的 type 一致（创建后不可修改）。本 Runner 已部署：
-                    {deployedServices.length > 0 ? deployedServices.join("、") : "未读取到任何 Provider 服务"}
+                    {deployedServices.length > 0
+                      ? "服务取自本 Runner 已部署的 Provider type，必须一致且创建后不可修改。"
+                      : "本 Runner 未部署任何 Provider，无法创建凭据池：先在 Runner 的 runner.yaml 里部署 Provider 并重启。"}
                   </p>
-                  {serviceNotDeployed ? (
-                    <p className="text-xs text-amber-700">
-                      该 Runner 尚未部署服务 {pendingService}：池仍会创建，但服务不可改，且无法绑定到任何 Provider。
-                    </p>
-                  ) : null}
                 </div>
               </Card>
 
@@ -501,7 +518,7 @@ export function CredentialsPage() {
                           <span>
                             <span className="font-mono">{credential.name}</span>
                             <span className="ml-2 font-mono text-slate-500">{credential.maskedSecret}</span>
-                            <span className="ml-2 text-slate-500">池 {credential.poolId}</span>
+                            <span className="ml-2 text-slate-500">池 {poolLabelOf(credential.poolId)}</span>
                             {credential.accountGroup ? (
                               <span className="ml-2 text-slate-500">账号组 {credential.accountGroup}</span>
                             ) : null}
@@ -557,7 +574,7 @@ export function CredentialsPage() {
                         <span>
                           <span className="font-mono">{provider.id}</span>
                           <span className="ml-2 text-slate-500">
-                            {provider.poolId ? `池 ${provider.poolId}` : "未绑定"}
+                            {provider.poolId ? `池 ${poolLabelOf(provider.poolId)}` : "未绑定"}
                           </span>
                         </span>
                         <span className="flex items-center gap-2">
@@ -572,7 +589,7 @@ export function CredentialsPage() {
                             }))}
                           >
                             {compatiblePools(provider).map((pool) => (
-                              <option key={pool.id} value={pool.id}>{pool.id}</option>
+                              <option key={pool.id} value={pool.id}>{poolLabel(pool)}</option>
                             ))}
                           </select>
                           <Button
@@ -657,7 +674,7 @@ export function CredentialsPage() {
                     >
                       <option value="">选择池</option>
                       {config.pools.map((pool) => (
-                        <option key={pool.id} value={pool.id}>{pool.id}</option>
+                        <option key={pool.id} value={pool.id}>{poolLabel(pool)}</option>
                       ))}
                     </select>
                   </label>

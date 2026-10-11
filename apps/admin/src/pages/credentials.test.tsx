@@ -251,9 +251,10 @@ describe("CredentialsPage mutations", () => {
 
     // 跨服务商的池不应出现在**绑定下拉**里，否则点了才报 service mismatch。
     // 注意只查绑定行：新增 Key 表单里列出全部池是合理的。
+    // 比较 option 的 value（引用键）而不是可见文本：文本已改成池名称。
     const bindSelect = document.querySelector("#bind-pool-tavily");
     expect(bindSelect).not.toBeNull();
-    const bindOptions = Array.from(bindSelect!.querySelectorAll("option")).map((option) => option.textContent);
+    const bindOptions = Array.from(bindSelect!.querySelectorAll("option")).map((option) => option.value);
     expect(bindOptions).toContain("tavily-main");
     expect(bindOptions).not.toContain("exa-main");
 
@@ -338,15 +339,15 @@ describe("CredentialsPage pool creation", () => {
   it("creates a pool with a chosen service and name instead of a hardcoded service", async () => {
     const { user, fetchMock } = await loadedPage();
 
-    // 服务没填之前不允许提交：服务创建后不可改，不能靠默认值代劳。
+    // 服务没选之前不允许提交：服务创建后不可改，不能靠默认值代劳。
     expect(screen.getByRole("button", { name: "新建池" })).toBeDisabled();
 
-    await user.type(screen.getByLabelText("服务"), "exa");
+    await user.selectOptions(screen.getByLabelText("服务"), "exa");
     await user.type(screen.getByLabelText("池名称"), "Exa 主池");
 
-    // 已部署的服务作为候选下发，前端不硬编码服务商名单。
-    const options = Array.from(document.querySelectorAll("#deployed-services option")).map((option) => option.getAttribute("value"));
-    expect(options).toEqual(["exa", "tavily"]);
+    // 已部署的服务作为候选项下发，前端不硬编码服务商名单。
+    const serviceOptions = (screen.getByLabelText("服务") as HTMLSelectElement).options;
+    expect(Array.from(serviceOptions).map((option) => option.value)).toEqual(["", "exa", "tavily"]);
 
     fetchMock.mockResolvedValue(json({ ...withDeployedProviders, version: 3 }));
     await user.click(screen.getByRole("button", { name: "新建池" }));
@@ -358,20 +359,46 @@ describe("CredentialsPage pool creation", () => {
     });
   });
 
-  it("warns about an undeployed service but still lets the pool be created", async () => {
-    const { user, fetchMock } = await loadedPage();
+  it("shows pool names in the binding and key-form dropdowns while keeping the id as the value", async () => {
+    const { user: _user } = await loadedPage();
 
-    await user.type(screen.getByLabelText("服务"), "anysearch");
+    // Provider 绑定下拉：可见文本是名称，value 仍是引用键。
+    const bindSelect = document.querySelector("#bind-pool-tavily") as HTMLSelectElement;
+    const bindOption = Array.from(bindSelect.options).find((option) => option.value === "tavily-main");
+    expect(bindOption?.textContent).toBe("Tavily 主池（tavily-main）");
 
-    // 先建池、后部署是合法流程；但必须说清代价（服务不可改、无法绑定），而不能静默接受。
-    expect(screen.getByText(/尚未部署服务 anysearch/)).toBeVisible();
+    // 新增 Key 的池下拉同理。
+    const poolSelect = screen.getByLabelText(/池 ID/) as HTMLSelectElement;
+    const poolOption = Array.from(poolSelect.options).find((option) => option.value === "tavily-main");
+    expect(poolOption?.textContent).toBe("Tavily 主池（tavily-main）");
 
-    fetchMock.mockResolvedValue(json({ ...withDeployedProviders, version: 3 }));
-    await user.click(screen.getByRole("button", { name: "新建池" }));
+    // Key 行与 Provider 行的池引用也要显示名称：改名之后不能还看到裸 ID 引用。
+    expect(screen.getAllByText(/池 Tavily 主池（tavily-main）/).length).toBeGreaterThan(0);
+    expect(screen.queryByText("池 tavily-main")).not.toBeInTheDocument();
+  });
 
-    expect(lastWriteBody(fetchMock)).toMatchObject({
-      mutation: { kind: "put-pool", service: "anysearch" },
-    });
+  it("falls back to the pool id when no name was set", async () => {
+    const unnamed: SafeCredentialConfig = {
+      ...withDeployedProviders,
+      pools: [{ ...safeConfig.pools[0]!, name: "" }],
+    };
+    const { user: _user } = await loadedPage(unnamed);
+
+    const bindSelect = document.querySelector("#bind-pool-tavily") as HTMLSelectElement;
+    expect(Array.from(bindSelect.options).map((option) => option.textContent)).toEqual(["tavily-main"]);
+  });
+
+  it("only offers deployed services, so a typo cannot leave an unusable pool", async () => {
+    const { user } = await loadedPage();
+
+    const serviceSelect = screen.getByLabelText("服务") as HTMLSelectElement;
+    // 未部署的服务根本不在选项里：service 创建后不可改，
+    // 手填的拼写错误会留下一个永远绑不上 Provider 的池。
+    expect(Array.from(serviceSelect.options).map((option) => option.value)).toEqual(["", "exa", "tavily"]);
+    expect(screen.getByRole("button", { name: "新建池" })).toBeDisabled();
+
+    await user.selectOptions(serviceSelect, "exa");
+    expect(serviceSelect).toHaveValue("exa");
   });
 
   it("shows pool names and renames one without changing its service or enabled state", async () => {
