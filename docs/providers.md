@@ -317,6 +317,11 @@ Tavily、Exa（以及后续接入的 AnySearch）都是**直接调用 HTTPS API*
 本机 loopback 例外、版本冲突 409、断线视为“结果待确认”）。Gateway 只短暂转发
 提交的 Key：不持久化、不回显、不写日志或审计；读取只返回 `maskedSecret`。
 
+**池的服务类型必须与 Provider 的 type 一致，且创建后不可修改**：绑定校验的是
+`providerType === pool.service`，服务写错就只能删池重建。因此管理界面里的候选服务
+取自 Runner **已部署**的 Provider type，不在前端硬编码服务商名单 —— 否则每新增一家
+服务商，界面都会静默过期一次（Exa 就是这么被漏掉的）。
+
 分层限流是核心：失败被分类为
 `category`（auth / rate_limited / quota / invalid_request / network / upstream / item_content）与
 `scope`（request / credential / account / endpoint_group / service / unknown）。同
