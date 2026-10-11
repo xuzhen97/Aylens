@@ -70,6 +70,8 @@ export type AdminOverview = {
     id: string;
     type: string;
     enabled: boolean;
+    /** 启用态来源。"config" 表示跟随配置文件；旧 Gateway 不下发该字段。 */
+    enabledMode?: ProviderEnabledMode;
     runtime?: Record<string, unknown>;
     authControl: boolean;
     authRuntimeId?: string;
@@ -145,4 +147,13 @@ export type ProviderAuthResponse = {
   providerId: string;
   runtimeId: string;
   auth: NonNullable<AdminOverview["providers"][number]["auth"]>;
+};
+
+export type ProviderEnabledMode = "enabled" | "disabled" | "config";
+
+export type ProviderEnabledResponse = {
+  providerId: string;
+  enabled: boolean;
+  enabledMode: ProviderEnabledMode;
+  enabledSource: "override" | "config";
 };

@@ -241,6 +241,18 @@ options:
   snippetChars: 500
 ```
 
+## 9.1 Provider 启用与禁用
+
+Admin「Providers」页面可以直接启用/禁用 Provider，改动立即生效，Gateway 重启后仍然保留。
+
+- 「跟随配置」按钮只在存在手动覆盖时出现。点击它即删除覆盖行，生效值回落到 `config/aylens.yaml`。
+- 停用需要二次确认：停用后所有依赖该 Provider 的路由都会以 `PROVIDER_DISABLED` 失败。注意失败形态：搜索接口仍返回 HTTP 200，逐 Provider 的错误在 `meta.providers[].error` 里（且**不会**带 `runtimeId`，因为它根本没被派发）；只有错误冒泡到路由层时才映射为 HTTP 503。
+- 启用一个 Provider 只是允许路由选中它；能否真正调用还取决于是否有在线 Runner 与可用凭据池。
+- 界面只显示当前生效值及其来源（跟随配置文件 / 手动覆盖）。**`config/aylens.yaml` 永远不会被程序改写**，因此文件里的 `enabled` 只是默认值，不代表当前生效状态。
+- 覆盖记录保存在 Gateway 本地 SQLite 的 `provider_settings` 表（迁移 v2）。运维排障时可直接查询该表确认是否存在手动覆盖。
+
+启用态语义与设计依据见 `docs/providers.md` 的「`enabled` 的默认值与运行时覆盖」与 `docs/adr/2026-10-10-runtime-provider-enablement.md`。
+
 ## 10. 常见故障
 
 ### Runner 未出现
@@ -395,6 +407,11 @@ Runner 应随之终止浏览器工作并释放 Lease。若持续不释放，检�
 - 确认 Runner 是通过 `loadRunnerStartup()` 启动的（不是只读 YAML 的旧入口），
   否则 `capabilities.credentialConfig` 恒为 false；
 - 只能查看不能写入是预期行为，不是权限问题。
+
+### 搜索返回 PROVIDER_DISABLED
+
+`PROVIDER_DISABLED` 表示该 Provider 当前被禁用，不是上游故障。它**不一定**是 HTTP 503：搜索接口会照常返回 200，并在 `meta.providers[].error` 里给出该错误（往往连 `runtimeId` 都没有，说明根本没被派发）。
+先到 `/admin → Providers` 确认生效值与来源（跟随配置文件 / 手动覆盖），处置步骤见 [§9.1 Provider 启用与禁用](#91-provider-启用与禁用)。
 
 ### 搜索返回 PROVIDER_UNAVAILABLE
 

@@ -4,6 +4,8 @@ import { openSqlite } from "../storage/sqlite.js";
 import { gatewayDbPath } from "../storage/paths.js";
 import { gatewayMigrations } from "../storage/gateway-migrations.js";
 import { ProviderRegistry } from "../providers/registry.js";
+import { ProviderSettingStore } from "../providers/provider-setting-store.js";
+import { ProviderSettingService } from "../providers/provider-setting-service.js";
 import { RuntimeRegistry } from "../runtime/registry.js";
 import { RunnerSessionManager } from "../runtime/runner-session-manager.js";
 import { ExecutionDispatcher } from "../runtime/dispatcher.js";
@@ -25,6 +27,8 @@ import { ExtractService } from "../extract/extract-service.js";
 export interface GatewayContext {
   config: AppConfig;
   providers: ProviderRegistry;
+  /** Provider 启用态写入与查询（Gateway 本地设置，不下发到 Runner）。 */
+  providerSettings: ProviderSettingService;
   runtimes: RuntimeRegistry;
   runnerSessions: RunnerSessionManager;
   dispatcher: ExecutionDispatcher;
@@ -43,7 +47,17 @@ export function createGatewayContext(
   config: AppConfig,
   options: { database?: DatabaseSync } = {},
 ): GatewayContext {
-  const providers = new ProviderRegistry();
+  // 数据库先于 ProviderRegistry 打开：启用态覆盖层必须在构建 registry 之前载入，
+  // 否则启动后的生效值与库里记录不一致。
+  const database = options.database
+    ?? openSqlite(gatewayDbPath(process.env, process.cwd()), gatewayMigrations);
+
+  const providerSettingStore = new ProviderSettingStore(database);
+  const providerOverrides = new Map<string, boolean>(
+    providerSettingStore.loadAll().map((row) => [row.providerId, row.enabled]),
+  );
+
+  const providers = new ProviderRegistry(providerOverrides);
   for (const [id, providerConfig] of Object.entries(config.providers)) {
     providers.addDefinition(id, providerConfig);
   }
@@ -52,8 +66,6 @@ export function createGatewayContext(
   const runnerSessions = new RunnerSessionManager(config.runtimeRegistry.jobTimeoutMs);
   const dispatcher = new ExecutionDispatcher(providers, runtimes, runnerSessions);
 
-  const database = options.database
-    ?? openSqlite(gatewayDbPath(process.env, process.cwd()), gatewayMigrations);
   const audit = new SqliteAuditService(database);
   const configOperations = new ConfigOperationStore(database);
 
@@ -82,10 +94,12 @@ export function createGatewayContext(
   const search = new SearchService(router, dispatcher, audit);
   const extract = new ExtractService(router, dispatcher, audit);
   const configChannel = new RunnerConfigChannel();
+  const providerSettings = new ProviderSettingService(providers, providerSettingStore);
 
   return {
     config,
     providers,
+    providerSettings,
     runtimes,
     runnerSessions,
     dispatcher,

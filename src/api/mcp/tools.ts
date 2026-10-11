@@ -71,13 +71,14 @@ export function createMcpTools(context: GatewayContext): McpToolDefinition[] {
     },
     {
       name: "list_providers",
-      description: "List configured provider definitions (id, type, enabled, runtime target).",
+      description: "List configured provider definitions (id, type, enabled, enabledMode, runtime target).",
       inputSchema: z.object({}),
       execute: async () => ({
-        providers: context.providers.list().map(({ id, config }) => ({
+        providers: context.providers.list().map(({ id, config, enabled, enabledMode }) => ({
           id,
           type: config.type,
-          enabled: config.enabled,
+          enabled,
+          enabledMode,
           runtime: config.runtime,
         })),
       }),

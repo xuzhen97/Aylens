@@ -1,4 +1,13 @@
-import type { AdminOverview, ApiError, ProviderAuthResponse, SearchRequest, SearchResponse, SessionInfo } from "./types";
+import type {
+  AdminOverview,
+  ApiError,
+  ProviderAuthResponse,
+  ProviderEnabledMode,
+  ProviderEnabledResponse,
+  SearchRequest,
+  SearchResponse,
+  SessionInfo,
+} from "./types";
 import type { ProxyWrite, SafeProxyConfig } from "./proxy-types";
 import type { CredentialWrite, SafeCredentialConfig, ProviderUsageReport, ProviderUsageResponse } from "./credential-types";
 
@@ -70,6 +79,18 @@ export function createAdminClient(options: ClientOptions) {
     },
     overview(signal?: AbortSignal): Promise<AdminOverview> {
       return request("/v1/admin/overview", { ...(signal ? { signal } : {}) });
+    },
+    /** 启用/禁用 Provider：mode=config 表示清除覆盖、回落到配置文件默认值。 */
+    setProviderEnabled(
+      providerId: string,
+      mode: ProviderEnabledMode,
+      signal?: AbortSignal,
+    ): Promise<ProviderEnabledResponse> {
+      return request(`/v1/providers/${encodeURIComponent(providerId)}/enabled`, {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+        ...(signal ? { signal } : {}),
+      }, true);
     },
     search(input: SearchRequest, signal?: AbortSignal): Promise<SearchResponse> {
       return request("/v1/search", {

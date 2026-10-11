@@ -6,7 +6,7 @@ import type { AdminSessionStore } from "./admin-session.js";
 
 export class AdminHttpError extends Error {
   constructor(
-    readonly statusCode: 400 | 401 | 403 | 409 | 429 | 503,
+    readonly statusCode: 400 | 401 | 403 | 404 | 409 | 429 | 503,
     readonly code: string,
     message: string,
     readonly retryAfterSeconds?: number,
@@ -88,6 +88,9 @@ export const COOKIE_AUTH_ROUTES = new Set([
   "POST /v1/providers/:providerId/auth/check",
   // 用量查询：Admin「API 凭据」页会调用，必须允许 Cookie 会话。
   "POST /v1/providers/:providerId/usage",
+  // Provider 启用态写入：Admin「Providers」页发起，必须允许 Cookie 会话。
+  // 漏加的表现是浏览器点击 401 跳登录页，而 Bearer 单测全绿。
+  "POST /v1/providers/:providerId/enabled",
   "GET /v1/admin/runners/:runnerId/proxy-config",
   "POST /v1/admin/runners/:runnerId/proxy-config",
   // API 凭据管理：与代理配置同级，同样由 Admin 页发起。

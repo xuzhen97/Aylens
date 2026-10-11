@@ -50,6 +50,16 @@ Provider ID 是 Gateway/Runner 对齐的逻辑实例，Provider Type 是调度�
 
 官方实现源码统一放在 `src/providers/<implementation>/`。正式构建时，内置实现会进入 Runner Bundle，不进入 Gateway Bundle；同一源码也可以构建成独立的 `.aylens-provider` 文件。Runner 用 `builtin:<implementation>` 加载内置实现，外部实现优先使用 `.aylens-provider` 分发，也继续兼容本地 ESM 路径或 npm package。无论来源如何，最终都必须导出同一个 Provider Plugin 契约。
 
+## `enabled` 的默认值与运行时覆盖
+
+`providers.<id>.enabled` 是**默认值**，不是当前生效状态：
+
+- 生效值 = Gateway SQLite 覆盖值 ?? `config/aylens.yaml` 的 `enabled`。
+- 覆盖层只保存"与配置文件的偏离"；没有覆盖行时完全跟随配置文件。
+- 程序只读不写 `config/aylens.yaml`。决策依据见 `docs/adr/2026-10-10-runtime-provider-enablement.md`。
+
+`enabled: false` 的请求语义：路由解析仍会选中该 Provider，请求在派发前被拒绝并返回 `PROVIDER_DISABLED`。该错误**不一定**伴随 HTTP 503：搜索接口照常返回 200，逐 Provider 的错误在 `meta.providers[].error` 里；只有错误冒泡到路由层时才映射为 HTTP 503。禁用**不会**让路由自动跳过它——需要调用方改换 `route` 或 `sources`。
+
 ## Runner Provider Plugin
 
 Runner 不在 Gateway 中硬编码渠道。内置 Provider 随 Runner Bundle 发布；外部 Provider 推荐打成单个 `.aylens-provider` 文件，由同一套 Plugin Loader 加载：

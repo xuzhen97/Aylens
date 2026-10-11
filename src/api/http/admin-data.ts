@@ -87,7 +87,7 @@ export function buildAdminOverview(context: GatewayContext) {
     });
   });
 
-  const providers = context.providers.list().map(({ id, config }) => {
+  const providers = context.providers.list().map(({ id, config, enabled, enabledMode }) => {
     const authRuntimes = runtimes
       .filter((runtime) => runtime.capabilities.authProviderIds?.includes(id))
       .map((runtime) => ({
@@ -100,7 +100,8 @@ export function buildAdminOverview(context: GatewayContext) {
     return {
       id,
       type: config.type,
-      enabled: config.enabled,
+      enabled,
+      enabledMode,
       runtime: toSafeRuntimeTarget(config.runtime),
       authControl: authRuntimes.length > 0,
       ...(latestAuth ? { authRuntimeId: latestAuth.runtimeId } : {}),

@@ -39,4 +39,16 @@ export const gatewayMigrations: readonly Migration[] = [
       CREATE INDEX idx_config_operations_created_at ON config_operations(created_at);
     `,
   },
+  {
+    // Provider 启用态覆盖层：只存与配置文件的偏离，见
+    // docs/adr/2026-10-10-runtime-provider-enablement.md。
+    version: 2,
+    sql: `
+      CREATE TABLE provider_settings (
+        provider_id TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
 ];

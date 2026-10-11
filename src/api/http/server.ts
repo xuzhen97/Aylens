@@ -11,6 +11,7 @@ import { AdminSessionStore, LoginLimiter } from "./admin-session.js";
 import { registerAdminSessionRoutes } from "./admin-session-routes.js";
 import { registerRunnerProxyRoutes } from "./runner-proxy-routes.js";
 import { registerRunnerCredentialRoutes } from "./runner-credential-routes.js";
+import { registerProviderEnabledRoutes } from "./provider-enabled-routes.js";
 import { extractRequestSchema, searchRequestSchema } from "../../contracts/validation.js";
 
 export function buildHttpServer(context: GatewayContext, options: Pick<FastifyServerOptions, "logger"> & { adminStaticRoot?: string } = {}): FastifyInstance {
@@ -84,10 +85,11 @@ export function buildHttpServer(context: GatewayContext, options: Pick<FastifySe
   });
 
   app.get("/v1/providers", async () => ({
-    providers: context.providers.list().map(({ id, config }) => ({
+    providers: context.providers.list().map(({ id, config, enabled, enabledMode }) => ({
       id,
       type: config.type,
-      enabled: config.enabled,
+      enabled,
+      enabledMode,
       runtime: config.runtime,
     })),
   }));
@@ -123,6 +125,8 @@ export function buildHttpServer(context: GatewayContext, options: Pick<FastifySe
   registerRunnerProxyRoutes(app, context);
   // API 凭据池管理:与代理共用配置通道,但资源类型、能力声明与审计目标独立。
   registerRunnerCredentialRoutes(app, context);
+  // Provider 启用态：Gateway 本地设置，不下发到 Runner。
+  registerProviderEnabledRoutes(app, context);
 
   app.addHook("onClose", async () => {
     sessions.clear();
