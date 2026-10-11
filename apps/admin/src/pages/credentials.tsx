@@ -75,6 +75,13 @@ export function CredentialsPage() {
     { pending?: boolean; report?: ProviderUsageReport; error?: string }
   >>({});
 
+  /** 新建池表单。服务创建后不可改，因此必须由人明确填写，不再前端写死。 */
+  const [newPoolService, setNewPoolService] = useState("");
+  const [newPoolName, setNewPoolName] = useState("");
+  /** 非空表示正在给这个池改名（复用 put-pool，只改 name）。 */
+  const [renamingPoolId, setRenamingPoolId] = useState<string | undefined>(undefined);
+  const [renameName, setRenameName] = useState("");
+
   const runners = data?.runtimes ?? [];
   const selectedRunner = runners.find((runner) => runner.id === selectedRunnerId)
     ?? runners.find((runner) => runner.status === "online");
@@ -243,13 +250,63 @@ export function CredentialsPage() {
     }
   };
 
-  const addPool = async () => {
+  /**
+   * 可选的池服务：取自本 Runner **已部署**的 Provider type。
+   *
+   * 不在前端硬编码服务商名：那份名单的唯一真相源是 Runner 的部署配置，
+   * 前端写死会在新增服务商时静默过期（exa 就是这么被漏掉的 ——
+   * 建出来的池永远只能是 tavily，且服务创建后不可改）。
+   */
+  const deployedServices = [...new Set(
+    (config?.providers ?? [])
+      .map((provider) => provider.service)
+      .filter((service): service is string => Boolean(service)),
+  )].sort();
+
+  const pendingService = newPoolService.trim();
+  const serviceNotDeployed = pendingService.length > 0 && !deployedServices.includes(pendingService);
+
+  /**
+   * 新建池。
+   *
+   * 池 ID 仍自动生成：它是被 Key 与绑定引用的主键，让人手填只会增加冲突面。
+   * 服务保留输入值不清空 —— 连续建同服务的多个池是常见操作。
+   */
+  const createPool = async () => {
+    const service = newPoolService.trim();
+    if (!service) {
+      setError("请填写池的服务类型（必须与 Provider 的 type 一致）");
+      return;
+    }
+    const name = newPoolName.trim();
     const id = `pool_${Date.now().toString(36)}`;
     await write(
-      { kind: "put-pool", id, service: "tavily", name: id, enabled: true },
-      "已创建池（服务默认 tavily，可在后续扩展中修改）。",
+      { kind: "put-pool", id, service, name: name || id, enabled: true },
+      `已创建池 ${name || id}（服务 ${service}）；服务创建后不可修改。`,
     );
     setPoolId(id);
+    setNewPoolName("");
+  };
+
+  const startRename = (pool: SafeCredentialConfig["pools"][number]) => {
+    setRenamingPoolId(pool.id);
+    setRenameName(pool.name);
+    setError(undefined);
+    setNotice(undefined);
+  };
+
+  /**
+   * 改名复用同一条 put-pool 写入：id 与 service 保持不变（service 创建后不可改），
+   * 但**必须带上当前的 enabled** —— 服务端这条分支会同时更新 name 与 enabled，
+   * 漏传会把停用的池悄悄启用。
+   */
+  const saveRename = async (pool: SafeCredentialConfig["pools"][number]) => {
+    const name = renameName.trim() || pool.id;
+    await write(
+      { kind: "put-pool", id: pool.id, service: pool.service, name, enabled: pool.enabled },
+      `已把池 ${pool.id} 命名为 ${name}`,
+    );
+    setRenamingPoolId(undefined);
   };
 
   return (
@@ -301,45 +358,134 @@ export function CredentialsPage() {
           {selectedRunner && config ? (
             <>
               <Card className="p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <strong className="text-sm">凭据池（版本 {config.version}）</strong>
-                  <Button variant="outline" size="sm" onClick={() => void addPool()} disabled={working || !supported}>
-                    新建池
-                  </Button>
-                </div>
+                <strong className="mb-3 block text-sm">凭据池（版本 {config.version}）</strong>
                 {config.pools.length === 0 ? (
                   <p className="text-sm text-slate-500">尚无凭据池</p>
                 ) : (
                   <ul className="space-y-2 text-sm">
                     {config.pools.map((pool) => (
                       <li key={pool.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 p-2">
-                        <span>
-                          <span className="font-mono">{pool.id}</span>
-                          <span className="ml-2 text-slate-500">{pool.service} · {pool.credentialCount} 个 Key</span>
-                          {pool.providerRefs.length > 0 ? (
-                            <span className="ml-2 text-slate-500">→ {pool.providerRefs.join(", ")}</span>
-                          ) : null}
-                        </span>
+                        {renamingPoolId === pool.id ? (
+                          <span className="flex flex-wrap items-center gap-2">
+                            <label className="text-sm">
+                              新名称
+                              <input
+                                className="ml-2 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                                value={renameName}
+                                onChange={(event) => setRenameName(event.target.value)}
+                                placeholder={pool.id}
+                              />
+                            </label>
+                            <span className="font-mono text-xs text-slate-500">
+                              {pool.id} · {pool.service}（服务不可改）
+                            </span>
+                          </span>
+                        ) : (
+                          <span>
+                            {/* 名称在前：满屏 pool_xxx 时人根本找不到自己要的那个池。 */}
+                            <span className="font-medium">{pool.name || pool.id}</span>
+                            <span className="ml-2 font-mono text-xs text-slate-500">
+                              {pool.id} · {pool.service} · {pool.credentialCount} 个 Key
+                            </span>
+                            {pool.providerRefs.length > 0 ? (
+                              <span className="ml-2 text-slate-500">→ {pool.providerRefs.join(", ")}</span>
+                            ) : null}
+                          </span>
+                        )}
                         <span className="flex gap-2">
                           <Badge variant={pool.enabled ? "success" : "secondary"}>
                             {pool.enabled ? "启用" : "停用"}
                           </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={working || !supported}
-                            onClick={() => void write(
-                              { kind: "delete-pool", id: pool.id },
-                              `已删除池 ${pool.id}（若仍被引用会返回冲突）`,
-                            )}
-                          >
-                            删除
-                          </Button>
+                          {renamingPoolId === pool.id ? (
+                            <>
+                              <Button
+                                size="sm"
+                                disabled={working || !supported}
+                                onClick={() => void saveRename(pool)}
+                              >
+                                保存名称
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={working}
+                                onClick={() => setRenamingPoolId(undefined)}
+                              >
+                                取消
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={working || !supported}
+                                onClick={() => startRename(pool)}
+                              >
+                                改名
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={working || !supported}
+                                onClick={() => void write(
+                                  { kind: "delete-pool", id: pool.id },
+                                  `已删除池 ${pool.id}（若仍被引用会返回冲突）`,
+                                )}
+                              >
+                                删除
+                              </Button>
+                            </>
+                          )}
                         </span>
                       </li>
                     ))}
                   </ul>
                 )}
+
+                <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="text-sm">
+                      服务
+                      <input
+                        list="deployed-services"
+                        className="ml-2 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={newPoolService}
+                        onChange={(event) => setNewPoolService(event.target.value)}
+                        placeholder="tavily / exa"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      池名称
+                      <input
+                        className="ml-2 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={newPoolName}
+                        onChange={(event) => setNewPoolName(event.target.value)}
+                        placeholder="Tavily 主池"
+                      />
+                    </label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={working || !supported || !newPoolService.trim()}
+                      onClick={() => void createPool()}
+                    >
+                      新建池
+                    </Button>
+                  </div>
+                  <datalist id="deployed-services">
+                    {deployedServices.map((service) => <option key={service} value={service} />)}
+                  </datalist>
+                  <p className="text-xs text-slate-500">
+                    服务必须与 Provider 的 type 一致（创建后不可修改）。本 Runner 已部署：
+                    {deployedServices.length > 0 ? deployedServices.join("、") : "未读取到任何 Provider 服务"}
+                  </p>
+                  {serviceNotDeployed ? (
+                    <p className="text-xs text-amber-700">
+                      该 Runner 尚未部署服务 {pendingService}：池仍会创建，但服务不可改，且无法绑定到任何 Provider。
+                    </p>
+                  ) : null}
+                </div>
               </Card>
 
               <Card className="p-4">

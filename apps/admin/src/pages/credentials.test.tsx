@@ -300,7 +300,7 @@ describe("CredentialsPage mutations", () => {
     // 点第一行（primary）的“替换” → 表单带 id/name/pool 预填，只需输入新密钥。
     // 列表有多个 Key，每行各有一个按钮，按首行取。
     await user.click(screen.getAllByRole("button", { name: "替换" })[0]!);
-    expect(screen.getByLabelText(/名称/)).toHaveValue("primary");
+    expect(screen.getByLabelText("名称")).toHaveValue("primary");
     expect(screen.getByLabelText(/池 ID/)).toHaveValue("tavily-main");
 
     await user.type(screen.getByLabelText("Key 明文"), "tvly-rotated-key");
@@ -314,6 +314,97 @@ describe("CredentialsPage mutations", () => {
       mutation: { kind: "put-credential", id: "key-1", poolId: "tavily-main", secret: "tvly-rotated-key" },
     });
     expect(screen.queryByText(/编辑中/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CredentialsPage pool creation", () => {
+  const withDeployedProviders: SafeCredentialConfig = {
+    ...safeConfig,
+    providers: [
+      { id: "tavily", poolId: "tavily-main", service: "tavily" },
+      { id: "exa", poolId: null, service: "exa" },
+    ],
+  };
+
+  async function loadedPage(config: SafeCredentialConfig = withDeployedProviders) {
+    const user = userEvent.setup();
+    const fetchMock = await mountedSession();
+    fetchMock.mockResolvedValue(json(config));
+    await user.click(screen.getByRole("button", { name: "读取配置" }));
+    await screen.findByText("tvly-s****alue");
+    return { user, fetchMock };
+  }
+
+  it("creates a pool with a chosen service and name instead of a hardcoded service", async () => {
+    const { user, fetchMock } = await loadedPage();
+
+    // 服务没填之前不允许提交：服务创建后不可改，不能靠默认值代劳。
+    expect(screen.getByRole("button", { name: "新建池" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("服务"), "exa");
+    await user.type(screen.getByLabelText("池名称"), "Exa 主池");
+
+    // 已部署的服务作为候选下发，前端不硬编码服务商名单。
+    const options = Array.from(document.querySelectorAll("#deployed-services option")).map((option) => option.getAttribute("value"));
+    expect(options).toEqual(["exa", "tavily"]);
+
+    fetchMock.mockResolvedValue(json({ ...withDeployedProviders, version: 3 }));
+    await user.click(screen.getByRole("button", { name: "新建池" }));
+
+    await waitFor(() => expect(screen.getByText(/已创建池 Exa 主池/)).toBeInTheDocument());
+    expect(lastWriteBody(fetchMock)).toMatchObject({
+      expectedVersion: 2,
+      mutation: { kind: "put-pool", service: "exa", name: "Exa 主池", enabled: true },
+    });
+  });
+
+  it("warns about an undeployed service but still lets the pool be created", async () => {
+    const { user, fetchMock } = await loadedPage();
+
+    await user.type(screen.getByLabelText("服务"), "anysearch");
+
+    // 先建池、后部署是合法流程；但必须说清代价（服务不可改、无法绑定），而不能静默接受。
+    expect(screen.getByText(/尚未部署服务 anysearch/)).toBeVisible();
+
+    fetchMock.mockResolvedValue(json({ ...withDeployedProviders, version: 3 }));
+    await user.click(screen.getByRole("button", { name: "新建池" }));
+
+    expect(lastWriteBody(fetchMock)).toMatchObject({
+      mutation: { kind: "put-pool", service: "anysearch" },
+    });
+  });
+
+  it("shows pool names and renames one without changing its service or enabled state", async () => {
+    const disabledPool: SafeCredentialConfig = {
+      ...withDeployedProviders,
+      pools: [{ ...safeConfig.pools[0]!, enabled: false, name: "Tavily 主池" }],
+    };
+    const { user, fetchMock } = await loadedPage(disabledPool);
+
+    // 名称必须可见：只显示 pool_xxx 时人找不到自己要的池。
+    expect(screen.getByText("Tavily 主池")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "改名" }));
+    const nameInput = screen.getByLabelText("新名称");
+    expect(nameInput).toHaveValue("Tavily 主池");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Tavily 备用池");
+
+    fetchMock.mockResolvedValue(json({ ...disabledPool, version: 3 }));
+    await user.click(screen.getByRole("button", { name: "保存名称" }));
+
+    await waitFor(() => expect(screen.getByText(/命名为 Tavily 备用池/)).toBeInTheDocument());
+    // 改名复用 put-pool：id 与 service 不变，且必须带上当前 enabled ——
+    // 服务端这条分支会同时更新 name 与 enabled，漏传会把停用的池悄悄启用。
+    expect(lastWriteBody(fetchMock)).toMatchObject({
+      mutation: {
+        kind: "put-pool",
+        id: "tavily-main",
+        service: "tavily",
+        name: "Tavily 备用池",
+        enabled: false,
+      },
+    });
   });
 });
 
