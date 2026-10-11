@@ -7,6 +7,10 @@ import { buildHttpServer } from "../src/api/http/server.js";
 import { AylensRunner } from "../src/runner/runner.js";
 import { runnerConfigSchema } from "../src/runner/config.js";
 import { createRunnerRuntime } from "../src/runner/runtime.js";
+import { openSqlite } from "../src/storage/sqlite.js";
+import { runnerMigrations } from "../src/storage/runner-migrations.js";
+import { CredentialStore } from "../src/runner/credentials/store.js";
+import { CredentialConfigService } from "../src/runner/credentials/service.js";
 
 let app: FastifyInstance | undefined;
 let runner: AylensRunner | undefined;
@@ -297,5 +301,112 @@ describe("Gateway/Runner integration", () => {
     const second = await rawRegister(wsUrl, "stale-token", "stale-runner");
     expect(second.answer).toMatchObject({ kind: "message", body: { type: "REGISTERED" } });
     expect(context.runnerSessions.isAttached("stale-runner")).toBe(true);
+  });
+});
+
+/**
+ * 凭据接线：走**真实派发路径**验证 runner.ts 把凭据池接进了 Provider。
+ *
+ * 为何单独开一个 describe：既有测试都自己手搓 factory context，所以 421 个测试
+ * 全绿也不能证明 `credentials` 被接上了（它曾经就是漏的）。这里用
+ * `fake-credential-provider-plugin` 在 create() 阶段 fail closed，
+ * 只有真实装配线通了、任务才可能成功。
+ */
+describe("Runner credential wiring", () => {
+  it("hands the bound credential pool to a provider created for a dispatched job", async () => {
+    const config = appConfigSchema.parse({
+      version: 1,
+      server: { host: "127.0.0.1", port: 3000, runnerPath: "/v1/runners/connect" },
+      auth: { apiKey: "api", runnerTokens: { "cred-runner": "cred-token" } },
+      runtimeRegistry: { heartbeatTimeoutMs: 1000, offlineAfterMs: 5000, jobTimeoutMs: 2000 },
+      transports: { direct: { type: "direct" } },
+      providers: {
+        credProvider: {
+          type: "fixture-credential",
+          enabled: true,
+          runtime: { selector: { providerType: "fixture-credential" } },
+          options: {},
+        },
+      },
+      routes: { default: { providers: ["credProvider"] } },
+      browserProfiles: {},
+    });
+
+    const context = createGatewayContext(config);
+    app = buildHttpServer(context);
+    const address = await app.listen({ host: "127.0.0.1", port: 0 });
+    const url = new URL(address);
+    url.protocol = "ws:";
+    url.pathname = config.server.runnerPath;
+
+    const runnerConfig = runnerConfigSchema.parse({
+      runner: {
+        id: "cred-runner",
+        gatewayUrl: url.toString(),
+        token: "cred-token",
+        heartbeatMs: 50,
+        maxJobs: 2,
+        labels: { role: "credential-test" },
+      },
+      plugins: {
+        baseDir: process.cwd(),
+        modules: ["./test/fixtures/fake-credential-provider-plugin.mjs"],
+      },
+      providers: { credProvider: { type: "fixture-credential", options: {} } },
+      transports: { direct: { type: "direct" } },
+      browserProfiles: {},
+    });
+
+    // 凭据服务是真实装配的一部分：池 / Key / 绑定都写进真实的 Runner 库。
+    // 池的 service 必须等于 Provider 的 type，否则 bind 会被服务归属校验拒绝。
+    const credentialService = new CredentialConfigService(
+      new CredentialStore(openSqlite(":memory:", runnerMigrations)),
+      { credProvider: "fixture-credential" },
+    );
+    credentialService.write({
+      operationId: "op-pool",
+      expectedVersion: 0,
+      mutation: { kind: "put-pool", id: "cred-main", service: "fixture-credential", name: "Cred", enabled: true },
+    });
+    credentialService.write({
+      operationId: "op-key",
+      expectedVersion: 1,
+      mutation: {
+        kind: "put-credential",
+        id: "key-1",
+        poolId: "cred-main",
+        name: "primary",
+        secret: "fixture-secret-value",
+        enabled: true,
+      },
+    });
+    credentialService.write({
+      operationId: "op-bind",
+      expectedVersion: 2,
+      mutation: { kind: "bind", providerId: "credProvider", poolId: "cred-main" },
+    });
+
+    const runtime = await createRunnerRuntime(runnerConfig, {
+      proxyConfig: undefined,
+      credentials: credentialService,
+    });
+    runner = new AylensRunner(runnerConfig, runtime);
+    await runner.connect();
+
+    const result = await context.search.search({ query: "cred-query" });
+
+    // 把 provider 错误带进断言消息：以后这条再红时能直接看到原因，
+    // 而不是只看到一句 'failed' 却不知道是哪一步断的。
+    expect(result.status, JSON.stringify(result.meta.providers)).toBe("completed");
+    expect(result.items).toHaveLength(1);
+    // 凭据池确实经由 runner.ts 的真实 context 到达了 Provider。
+    // 少了这条接线，fixture 会在 create() 阶段直接抛错，上面两行不可能通过。
+    expect(result.items[0]?.extensions).toMatchObject({
+      poolId: "cred-main",
+      credentialId: "key-1",
+      hadSecret: true,
+    });
+    // secret 绝不进入 Gateway 可见的结果。
+    expect(JSON.stringify(result)).not.toContain("fixture-secret-value");
   });
 });

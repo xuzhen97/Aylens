@@ -4,6 +4,7 @@ import type { RunnerConfig } from "./config.js";
 import type { RunnerRuntime } from "./runtime.js";
 import { createId } from "../shared/ids.js";
 import { RetrievalError, toErrorPayload } from "../core/errors.js";
+import type { ProviderFactoryContext } from "../providers/types.js";
 import { extractRequestSchema, searchRequestSchema } from "../contracts/validation.js";
 import { ProxyConfigError } from "./proxy-config-service.js";
 import { CredentialConfigError } from "./credentials/service.js";
@@ -279,15 +280,25 @@ export class AylensRunner {
         );
       }
 
+      // 用 Required<> 标注：所有字段都**必填**。将来新增能力时漏接线会变成编译错误，
+      // 而不是运行期静默降级——`credentials` 曾经就是这样漏掉的：
+      // API 型 Provider 实机恒报 PROVIDER_UNAVAILABLE，而 421 个测试全绿
+      // （因为它们都自己手搓这个 context，从未走过这条装配线）。
+      const factoryContext: Required<ProviderFactoryContext> = {
+        transports: snapshot.transports,
+        browser: snapshot.browser,
+        defaultBrowserProfile: this.config.browser.defaultProfile,
+        reportAuthState: (state) => this.runtime.reportProviderAuthState(message.providerId, state),
+        // 取该 Provider 绑定的凭据池。内部按配置版本惰性刷新：
+        // 写入 Key 后新任务立即看到新 Key，无需重启 Runner。
+        // 浏览器型 Provider 不会调用它；API 型 Provider 靠它拿 Key。
+        credentials: { poolForProvider: (providerId) => this.runtime.credentialPool(providerId) },
+      };
+
       const provider = this.runtime.providers.create(
         message.providerId,
         deployment,
-        {
-          transports: snapshot.transports,
-          browser: snapshot.browser,
-          defaultBrowserProfile: this.config.browser.defaultProfile,
-          reportAuthState: (state) => this.runtime.reportProviderAuthState(message.providerId, state),
-        },
+        factoryContext,
       );
 
       const providerContext = {
