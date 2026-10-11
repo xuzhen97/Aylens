@@ -345,12 +345,12 @@ Tavily、Exa（以及后续接入的 AnySearch）都是**直接调用 HTTPS API*
 | --- | --- |
 | Tavily | 原生批次 20；成败看 HTTP 状态 |
 | Exa | 原生批次 100；提取用 `statuses` 逐 URL 表达成败；正文只有纯文本 |
-| AnySearch 类 | 每次只取 1 个 URL（须自行有界并发）；HTTP 200 仍可能带业务失败码 |
+| AnySearch | 每次只取 1 个 URL（须自行有界并发）；HTTP 200 仍可能带业务失败码 |
 
 “能承接新服务商”不是口头承诺：`test/provider-compat.test.ts` 用测试替身
 逐项证明公共层不预设 Tavily 的形状（100 URL 不被迫拆批、单 URL 适配器并发受限、
 业务码失败会落到凭据池），`test/credential-pool.test.ts` 证明账号级限流不轮换同组 Key。
-替身仅用于测试，**不是可上线的 AnySearch 实现**（Exa 已有真实实现，见下节）。
+替身仅用于测试；Tavily / Exa / AnySearch **均已存在真实实现**（见下文各节）。
 
 ### 调用示例
 
@@ -486,6 +486,90 @@ POST /v1/extract { "urls": ["https://example.com/a"], "sources": ["exa"] }
 
 Gateway 默认把 `exa` 设为 `enabled: false`，需在 Admin 启用并绑定 Runner 凭据池
 （服务名 `exa`）后才会参与路由。
+
+
+## AnySearch（API 检索）
+
+仓库包含：
+
+```text
+src/providers/anysearch/
+```
+
+第三个内置 API Provider。两个独立能力：
+
+- **Search**：`POST https://api.anysearch.com/v1/search`；
+- **Extract**：`POST https://api.anysearch.com/v1/extract`，**上游一次只接受一个 URL**。
+
+同样与浏览器无关，可用完全不带 Browser Profile 的 API-only Runner。
+
+### 不提供匿名模式（安全边界）
+
+AnySearch 官方支持匿名访问（不带 `Authorization` 头），但本适配器**不支持匿名**，凭据池必需：
+
+1. 官方 401 的语义就是「无效凭据不回退匿名」，与 ADR-2026-10-09 一致；
+2. 匿名额度耗尽的 **402 响应 message 里会带自动注册生成的 `username` / `password` /
+   `api_key`**，官方明确要求整包按敏感数据处理。我们不读、不回显、不落日志或审计，
+   也不保存这类自动生成的凭据。
+
+因此本适配器的错误分类**只看状态码与业务码，绝不解析 message**。
+
+### 与另两家的差异
+
+| 维度 | Tavily | Exa | AnySearch |
+| --- | --- | --- | --- |
+| 认证 | `Bearer` | `x-api-key` | `Bearer`（且不接受匿名） |
+| Extract 批次 | 20 | 100 | **1**（适配器有界并发，默认 2、上限 8） |
+| 成败判定 | HTTP 状态 | HTTP 状态 | **HTTP 状态 + 业务码 `code`** |
+| 上游结果上限 | `max_results` 受套餐约束 | 100 | **10**（`max_results` 1–10） |
+| Markdown | 可（`raw_content`） | 不支持 | **可**（`format: markdown` → `content` 即 Markdown） |
+| 用量端点 | `/usage` | 无 | 无 |
+
+### 业务码也是成败的一部分
+
+官方明确提醒「错误可以走 application code，不要假设每个错误都用 `code: -1`」。
+所以 2xx 之后仍校验 `code === 0`：缺失、非 0、或形状不对一律 fail closed。
+
+已知业务码只认有依据的取值（`42901` 与与 HTTP 同形的 400/401/402/403/422/429），
+其余未知业务码**不猜**：只记 `upstream`/`unknown`，不做凭据判定，
+也不因为一个陌生数字把 Key 隔离掉。逐项错误码只映射 `invalid_extract_url` 与
+`extract_failed` 两个已知枚举，其余降级为 `CONTENT_UNAVAILABLE`。
+
+| 状态 | 含义 | category / scope | 对外错误码 |
+| --- | --- | --- | --- |
+| 400 / 415 | 参数或 Content-Type 不对 | invalid_request / request | `INVALID_REQUEST` |
+| 401 | Key 无效 | auth / credential | `UPSTREAM_AUTH_FAILED` |
+| 402 | 额度耗尽 | quota / credential | `PROVIDER_UNAVAILABLE`（不可重试） |
+| 403 | Key 过期 / 账号禁用 | permission / unknown | `UPSTREAM_ERROR` |
+| 422（仅 Extract） | 这一个 URL 提取不了 | **item_content / request** | `CONTENT_UNAVAILABLE`（不牵连 Key） |
+| 429 | 限流（官方未承诺 `Retry-After`） | rate_limited / credential | `RATE_LIMITED`（可重试） |
+| 502 / 5xx | 上游不可用 | upstream / service | `UPSTREAM_ERROR`（可重试） |
+
+### 正文与参数
+
+- `format: markdown` → 填 `markdown`（`content` 就是 Markdown）；默认 json 时只填 `text`。
+- Search 的 `content` 官方只承诺是「cleaned content」、**不承诺全文**，因此
+  `contentScope` 标 `partial`；Extract 是整页提取，标 `full`，但其格式不定
+  （cleaned HTML / 纯文本 / JSON / Markdown 皆可能），故 `contentFormat: "unknown"`
+  且**永不填 `markdown`**。
+- 参数白名单：Search 放行 `tag` / `zone` / `language` / `params` / `format` / `max_results`；
+  **Extract 白名单为空集**（body 只能是 `{url}`，多一个键就被上游 400 拒绝）。
+- `maxConcurrentExtracts` 是**适配器自用**选项（不发往上游），1–8，默认 2。
+- **`limit` 与上游 10 条上限**：不静默截断 —— 发 `min(limit, 10)`，并在结果里标
+  `requestedLimit` 与 `limitCappedTo`，让调用方看得见。
+- 通用字段 `language` 这里**有**对应参数（另两家没有），按最弱优先级合入，可被部署层
+  与请求级专属选项覆盖。
+
+### 调用示例
+
+```json
+POST /v1/search  { "query": "Go 1.26 release notes", "sources": ["anysearch"], "limit": 5 }
+POST /v1/extract { "urls": ["https://example.com/article"], "sources": ["anysearch"] }
+```
+
+Gateway 默认把 `anysearch` 设为 `enabled: false`，需在 Admin 启用并绑定 Runner 凭据池
+（服务名 `anysearch`）后才会参与路由。100 个 URL 的提取会变成 100 次上游调用，
+按并发上限（默认 2）分波执行 —— 这是上游「一次一个 URL」的直接后果，不是实现缺陷。
 
 
 ## 人工登录态

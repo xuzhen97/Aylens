@@ -11,6 +11,7 @@ plugins:
     # 未绑定池时会明确返回 PROVIDER_UNAVAILABLE，不会匿名或无认证调用。
     - "builtin:tavily"
     - "builtin:exa"
+    - "builtin:anysearch"
 
 browser:
   # url-fetch 只在静态获取不足时最后尝试浏览器，并复用这个持久化 Profile 的登录态。
@@ -71,6 +72,20 @@ providers:
     # Contents 可用：text / summary / highlights / maxAgeHours
     # 刻意不支持：livecrawl*（已弃用，改用 maxAgeHours）、context（已弃用）、
     #             outputSchema / additionalQueries（deep search 产物我们不会消费）。
+    options: {}
+  # AnySearch：直接调 HTTPS API，不占浏览器 Profile、不启动 Chrome。
+  # API Key 不写在这里 —— 在 /admin → API 凭据 页面添加并绑定到本池（服务名 anysearch）。
+  # ⚠️ 不提供匿名模式：匿名额度耗尽的 402 响应会带自动注册生成的账号密码与 API Key。
+  anysearch:
+    type: anysearch
+    transport:
+      primary: direct
+      fallback: []
+    # Search 可用：tag / zone / language / params / format / max_results
+    # Extract 无可用选项：/v1/extract 的 body 只能是 {url}，多一个键即被上游 400 拒绝。
+    #   maxConcurrentExtracts  适配器自用（不发往上游）：单 URL 提取的并发上限，1–8，默认 2。
+    #   上游最多 10 条/max_results，契约 limit 可到 100；超出时发 10 并在结果里标
+    #   requestedLimit / limitCappedTo，不静默截断。
     options: {}
 
 transports:

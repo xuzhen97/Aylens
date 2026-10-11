@@ -19,6 +19,10 @@ providers:
   exa:
     type: exa
     enabled: false
+  # AnySearch：单 URL 提取 + 业务码失败形状，同样默认 disabled。
+  anysearch:
+    type: anysearch
+    enabled: false
 
 routes:
   default:
@@ -34,3 +38,6 @@ routes:
   exa:
     providers:
       - exa
+  anysearch:
+    providers:
+      - anysearch

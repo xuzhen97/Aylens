@@ -10,6 +10,7 @@ import urlFetchPlugin from "./url-fetch/index.js";
 import xSearchPlugin from "./x-search/index.js";
 import tavilyPlugin from "./tavily/index.js";
 import exaPlugin from "./exa/index.js";
+import anySearchPlugin from "./anysearch/index.js";
 
 export interface ProviderPlugin {
   name: string;
@@ -36,6 +37,7 @@ const BUILTIN_PLUGINS = new Map<string, ProviderPlugin>([
   ["builtin:x-search", xSearchPlugin],
   ["builtin:tavily", tavilyPlugin],
   ["builtin:exa", exaPlugin],
+  ["builtin:anysearch", anySearchPlugin],
 ]);
 
 function resolveFileReference(moduleRef: string, baseDir: string): string {

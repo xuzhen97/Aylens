@@ -453,10 +453,10 @@ Runner 数据库持有明文 Key，**第一期未做静态加密**：数据库�
 ### 验证
 
 ```bash
-pnpm vitest run --config vitest.config.ts test/api-only-runner.test.ts test/tavily-release.test.ts test/exa-release.test.ts test/provider-compat.test.ts
+pnpm vitest run --config vitest.config.ts test/api-only-runner.test.ts test/tavily-release.test.ts test/exa-release.test.ts test/anysearch-release.test.ts test/provider-compat.test.ts
 ```
 
-四者分别证明：无浏览器 Runner 能完整装载凭据服务并执行搜索；Tavily 与 Exa 的独立
+五者分别证明：无浏览器 Runner 能完整装载凭据服务并执行搜索；Tavily / Exa / AnySearch 的独立
 Provider 包在源码目录外也能加载（漏打包的依赖会以 MODULE_NOT_FOUND 暴露）；公共层能
 承接不同形状的服务商（批量上限、单 URL、业务失败码），而不是预设 Tavily 的形状。
 

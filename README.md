@@ -24,6 +24,7 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway，使用 No
 - x-search：X 原生查询、Latest Post 提取、人工登录状态检测
 - tavily：API 检索的 Search / Extract 双能力，不依赖浏览器（API-only Runner 可跑）
 - exa：API 检索的 Search / Contents 双能力（原生批次 100、`x-api-key`、正文为纯文本），同样不依赖浏览器
+- anysearch：API 检索的 Search / 单 URL Extract（有界并发、业务码失败形状、可原生返回 Markdown），同样不依赖浏览器
 - 独立的 Extract 契约（逐 URL 成功/失败，不与 Search 混用）
 - Runner API 凭据池：多 Key 轮询、分层限流、在线管理与热更新
 - 内存 Audit
