@@ -46,14 +46,23 @@ export function createMcpTools(context: GatewayContext): McpToolDefinition[] {
   return [
     {
       name: "search",
-      description: "Search configured retrieval providers through the Aylens gateway.",
+      description:
+        "Search configured retrieval providers through the Aylens gateway. " +
+        "The meaning of `query` depends on the provider: url-fetch expects a URL, x-search expects an X search expression, " +
+        "and the API sources (tavily / exa / anysearch) expect a natural-language query. " +
+        "The API sources already return content, so a follow-up extract on the same URLs is unnecessary. " +
+        "API sources may be disabled by default; check `list_providers` for enabled state and available operations first.",
       inputSchema: searchInput,
       execute: async (input) => context.search.search(searchInput.parse(input)),
     },
     {
       name: "extract",
       description:
-        "Extract full content for explicit URLs. Requires an explicit provider source; returns per-URL success/failure.",
+        "Extract full content for explicit URLs. Requires an explicit provider source; returns per-URL success/failure. " +
+        "Only tavily / exa / anysearch provide this capability (url-fetch and x-search do not). " +
+        "Batch limits differ per source: tavily up to 20 URLs, exa up to 100 URLs (text only, never markdown), " +
+        "anysearch accepts one URL per upstream call (Aylens runs them with bounded concurrency, so long lists are slow). " +
+        "Search already returns content for the API sources, so do not call Extract again on the same URLs.",
       inputSchema: extractInput,
       execute: async (input) => context.extract.extract(extractInput.parse(input)),
     },

@@ -614,3 +614,10 @@ Gateway REST API
 ```
 
 这些边界构成当前 Provider 扩展方式。完整架构见 [architecture.md](./architecture.md)。
+
+## 让 Agent 真正用得上新 Provider
+
+Provider 实现完成、路由配好，只说明**能**调用；Agent 是否**会**调用取决于它对渠道的可见性：
+
+- `GET /v1/runtimes` 里的 `capabilities.providerOperations` 是「谁支持 search / extract / usage」的唯一权威事实（来自 Runner 加载成功的 factory，而不是配置猜测）。Gateway 进程不加载 Provider 实现，因此它自己无法回答这个问题；
+- VCPToolBox 侧另外还要有文字说明：渠道 ID、`query` 语义、批量与正文格式限制，都必须写进 `packages/vcp-plugin/src/commands.ts` 的 `Search` / `Extract` 描述里（构建时生成 manifest），并跑 `pnpm build:plugin`。描述漏写 = 渠道存在但不会被调用。契约测试会拦下这种漏写，详见 [vcp-plugin.md](./vcp-plugin.md)。

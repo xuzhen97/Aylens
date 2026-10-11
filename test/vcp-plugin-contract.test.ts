@@ -99,6 +99,35 @@ describe("VCP 插件 / MCP adapter 契约", () => {
     }
   });
 
+  it("Search / Extract 的命令描述必须点名 API 型渠道的真实事实", () => {
+    // 回归背景：Tavily / Exa / AnySearch 落地后，描述长期只提「url-fetch / x-search 等 Provider」，
+    // 于是 VCP 里的 AI 根本不知道这三条渠道存在、也不知道 Extract 支持谁。
+    // 这条用例把「描述不许漏写渠道事实」变成会变红的约束。
+    const descriptionOf = (command: string) =>
+      manifest.capabilities.invocationCommands.find((item) => item.command === command)?.description ?? "";
+
+    const search = descriptionOf("Search");
+    expect(search).not.toBe("");
+    for (const providerId of ["tavily", "exa", "anysearch"]) {
+      expect(search, `Search 描述漏掉了 API 渠道 ${providerId}`).toContain(providerId);
+    }
+    // url-fetch / x-search 的 query 语义差异必须写明，否则调用方会把 URL 当成检索词。
+    expect(search).toContain("url-fetch");
+    expect(search).toContain("x-search");
+
+    const extract = descriptionOf("Extract");
+    expect(extract).not.toBe("");
+    for (const providerId of ["tavily", "exa", "anysearch"]) {
+      expect(extract, `Extract 描述漏掉了提取渠道 ${providerId}`).toContain(providerId);
+    }
+    // 不可用的来源必须点名，避免调用方猜错后吃 NO_COMPATIBLE_RUNTIME。
+    expect(extract).toContain("url-fetch");
+    // AnySearch 上游一次只接受一个 URL 是它最反直觉的事实，必须写进描述。
+    expect(extract).toContain("1 个 URL");
+    // Exa 只有纯文本；不写明会让人以为 markdown 一定能拿到。
+    expect(extract).toContain("纯文本");
+  });
+
   it("get_status 直接读取 Runtime 注册表", async () => {
     const context = {
       runtimes: { list: () => [{ id: "runner-1" }, { id: "runner-2" }] },

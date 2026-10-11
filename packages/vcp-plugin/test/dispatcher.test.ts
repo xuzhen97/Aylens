@@ -183,8 +183,9 @@ describe("dispatchCommand", () => {
 					status: "online",
 					labels: { env: "prod" },
 					capabilities: {
-						providerTypes: ["url-fetch"],
-						providerIds: ["url-fetch"],
+						providerTypes: ["url-fetch", "tavily"],
+						providerIds: ["url-fetch", "tavily"],
+						providerOperations: { "url-fetch": ["search"], tavily: ["search", "extract"] },
 						browsers: ["chrome"],
 						profiles: ["browser-main"],
 						proxyConfig: true,
@@ -200,14 +201,150 @@ describe("dispatchCommand", () => {
 		expect(text).toContain("runner-1");
 		expect(text).toContain("env=prod");
 		expect(text).toContain("代理配置通道=true");
+		expect(text).toContain("Provider 能力: url-fetch=search · tavily=search,extract");
+
+		// 旧 Runner 不上报 providerOperations：必须如实说「未上报」，而不是报错或假装无能力。
+		const { client: legacy } = createStubClient(() => ({
+			runtimes: [
+				{
+					id: "runner-legacy",
+					hostname: "syc",
+					os: "windows",
+					version: "0.0.9",
+					protocolVersion: "1",
+					status: "online",
+					labels: {},
+					capabilities: {
+						providerTypes: ["url-fetch"],
+						providerIds: ["url-fetch"],
+						browsers: [],
+						profiles: [],
+						http: true,
+						browserAutomation: false,
+					},
+					capacity: { maxJobs: 1, activeJobs: 0 },
+					lastSeenAt: Date.now(),
+				},
+			],
+		}));
+		expect(textOf(await dispatchCommand(legacy, { command: "ListRuntimes" }))).toContain(
+			"Provider 能力: 未上报",
+		);
 	});
 
-	it("ListProviders 渲染 Provider 清单", async () => {
-		const { client } = createStubClient(() => ({
-			providers: [{ id: "url-fetch", type: "url-fetch", enabled: true, runtime: { mode: "any" } }],
-		}));
+	it("ListProviders 渲染 Provider 清单，并附上 Runner 上报的真实可用操作", async () => {
+		const { client, calls } = createStubClient((call) =>
+			call.path === "/v1/runtimes"
+				? {
+						runtimes: [
+							{
+								id: "runner-1",
+								hostname: "syc",
+								os: "windows",
+								version: "0.1.0",
+								protocolVersion: "1",
+								status: "online",
+								labels: {},
+								capabilities: {
+									providerTypes: ["url-fetch", "tavily"],
+									providerIds: ["url-fetch", "tavily", "x"],
+									providerOperations: { "url-fetch": ["search"], tavily: ["search", "extract"] },
+									browsers: ["chrome"],
+									profiles: ["browser-main"],
+									http: true,
+									browserAutomation: true,
+								},
+								capacity: { maxJobs: 4, activeJobs: 0 },
+								lastSeenAt: Date.now(),
+							},
+						],
+					}
+				: {
+						providers: [
+							{ id: "url-fetch", type: "url-fetch", enabled: true, runtime: { mode: "any" } },
+							{ id: "tavily", type: "tavily", enabled: false, runtime: { mode: "any" } },
+							{ id: "x", type: "x-search", enabled: true, runtime: { mode: "any" } },
+						],
+					},
+		);
 		const text = textOf(await dispatchCommand(client, { command: "ListProviders" }));
+		expect(calls.map((call) => call.path)).toEqual(["/v1/providers", "/v1/runtimes"]);
 		expect(text).toContain("url-fetch · type=url-fetch · enabled=true");
+		// 能力必须来自 Runner 上报，而不是插件猜测：tavily 声明了 extract，url-fetch 没有。
+		expect(text).toContain("可用操作: search@runner-1");
+		expect(text).toContain("可用操作: search,extract@runner-1");
+		// 没有 Runner 声明的 Provider（x）不得被说成可用。
+		expect(text).toContain("未上报（在线 Runner 没有声明这个 Provider）");
+		expect(text).toContain("url-fetch` 与 `x` 不提供该能力");
+	});
+
+	it("ListProviders 在无在线 Runner 时明说能力未知，不谎报支持", async () => {
+		const { client } = createStubClient((call) =>
+			call.path === "/v1/runtimes"
+				? {
+						runtimes: [
+							{
+								id: "runner-offline",
+								hostname: "syc",
+								os: "windows",
+								version: "0.1.0",
+								protocolVersion: "1",
+								status: "offline",
+								labels: {},
+								capabilities: {
+									providerTypes: ["tavily"],
+									providerIds: ["tavily"],
+									providerOperations: { tavily: ["search", "extract"] },
+									browsers: [],
+									profiles: [],
+									http: true,
+									browserAutomation: false,
+								},
+								capacity: { maxJobs: 4, activeJobs: 0 },
+								lastSeenAt: Date.now(),
+							},
+						],
+					}
+				: { providers: [{ id: "tavily", type: "tavily", enabled: false, runtime: { mode: "any" } }] },
+		);
+		const text = textOf(await dispatchCommand(client, { command: "ListProviders" }));
+		expect(text).toContain("可用操作: 未知（当前没有在线 Runner）");
+		expect(text).toContain("当前没有在线 Runner");
+		expect(text).not.toContain("extract@runner-offline");
+	});
+
+	it("ListProviders 对旧版 Runner（不上报 providerOperations）显示未上报而不是报错", async () => {
+		const { client } = createStubClient((call) =>
+			call.path === "/v1/runtimes"
+				? {
+						runtimes: [
+							{
+								id: "runner-legacy",
+								hostname: "syc",
+								os: "windows",
+								version: "0.0.9",
+								protocolVersion: "1",
+								status: "online",
+								labels: {},
+								capabilities: {
+									providerTypes: ["url-fetch"],
+									providerIds: ["url-fetch"],
+									browsers: ["chrome"],
+									profiles: ["browser-main"],
+									http: true,
+									browserAutomation: true,
+								},
+								capacity: { maxJobs: 2, activeJobs: 0 },
+								lastSeenAt: Date.now(),
+							},
+						],
+					}
+				: { providers: [{ id: "url-fetch", type: "url-fetch", enabled: true, runtime: { mode: "any" } }] },
+		);
+		const text = textOf(await dispatchCommand(client, { command: "ListProviders" }));
+		expect(text).toContain("可用操作: 未上报（在线 Runner 没有声明这个 Provider）");
+		expect(text).toContain("旧版本");
+		expect(text).toContain("实际可能仍支持 search");
 	});
 
 	it("底层 fetch 失败被包装成 AylensBridgeError", async () => {

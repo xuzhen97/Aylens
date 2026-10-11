@@ -520,6 +520,9 @@ async function handleSearch(client, params) {
 }
 
 // dist/handlers/system.js
+function isSchedulable(runtime) {
+  return runtime.status === "online" || runtime.status === "degraded";
+}
 async function handleGetStatus(client) {
   const health = await client.get("/health");
   const ready = await client.get("/ready");
@@ -531,6 +534,13 @@ async function handleGetStatus(client) {
   }
   return ok(lines.join("\n"));
 }
+function formatProviderOperations(runtime) {
+  const entries = Object.entries(runtime.capabilities.providerOperations ?? {});
+  if (entries.length === 0) {
+    return "- Provider \u80FD\u529B: \u672A\u4E0A\u62A5\uFF08\u8BE5 Runner \u7248\u672C\u8F83\u65E7\uFF0C\u6216\u6CA1\u6709\u5DF2\u52A0\u8F7D\u5B9E\u73B0\u7684 Provider\uFF09";
+  }
+  return `- Provider \u80FD\u529B: ${entries.map(([id, operations]) => `${id}=${operations.join(",") || "\u65E0"}`).join(" \xB7 ")}`;
+}
 async function handleListRuntimes(client) {
   const { runtimes } = await client.get("/v1/runtimes");
   if (runtimes.length === 0) {
@@ -538,7 +548,7 @@ async function handleListRuntimes(client) {
   }
   const lines = [`\u5171 ${runtimes.length} \u4E2A Runner\uFF1A`];
   for (const runtime of runtimes) {
-    lines.push("", `### ${runtime.id}`, `- \u4E3B\u673A: ${runtime.hostname} \xB7 os=${runtime.os} \xB7 \u7248\u672C=${runtime.version} \xB7 \u534F\u8BAE=${runtime.protocolVersion}`, `- \u72B6\u6001: ${runtime.status} \xB7 \u6700\u540E\u5FC3\u8DF3: ${formatAge(runtime.lastSeenAt)}`, `- \u5BB9\u91CF: ${runtime.capacity.activeJobs}/${runtime.capacity.maxJobs}`, `- Provider \u7C7B\u578B: ${runtime.capabilities.providerTypes.join(", ") || "\uFF08\u65E0\uFF09"}`, `- Provider \u5B9E\u4F8B: ${runtime.capabilities.providerIds.join(", ") || "\uFF08\u65E0\uFF09"}`, `- \u6D4F\u89C8\u5668: ${runtime.capabilities.browsers.join(", ") || "\uFF08\u65E0\uFF09"} \xB7 \u81EA\u52A8\u5316=${runtime.capabilities.browserAutomation} \xB7 HTTP=${runtime.capabilities.http}`, `- Profile: ${runtime.capabilities.profiles.join(", ") || "\uFF08\u65E0\uFF09"} \xB7 \u4EE3\u7406\u914D\u7F6E\u901A\u9053=${runtime.capabilities.proxyConfig === true}`);
+    lines.push("", `### ${runtime.id}`, `- \u4E3B\u673A: ${runtime.hostname} \xB7 os=${runtime.os} \xB7 \u7248\u672C=${runtime.version} \xB7 \u534F\u8BAE=${runtime.protocolVersion}`, `- \u72B6\u6001: ${runtime.status} \xB7 \u6700\u540E\u5FC3\u8DF3: ${formatAge(runtime.lastSeenAt)}`, `- \u5BB9\u91CF: ${runtime.capacity.activeJobs}/${runtime.capacity.maxJobs}`, `- Provider \u7C7B\u578B: ${runtime.capabilities.providerTypes.join(", ") || "\uFF08\u65E0\uFF09"}`, `- Provider \u5B9E\u4F8B: ${runtime.capabilities.providerIds.join(", ") || "\uFF08\u65E0\uFF09"}`, formatProviderOperations(runtime), `- \u6D4F\u89C8\u5668: ${runtime.capabilities.browsers.join(", ") || "\uFF08\u65E0\uFF09"} \xB7 \u81EA\u52A8\u5316=${runtime.capabilities.browserAutomation} \xB7 HTTP=${runtime.capabilities.http}`, `- Profile: ${runtime.capabilities.profiles.join(", ") || "\uFF08\u65E0\uFF09"} \xB7 \u4EE3\u7406\u914D\u7F6E\u901A\u9053=${runtime.capabilities.proxyConfig === true}`);
     const labels = Object.entries(runtime.labels);
     if (labels.length > 0) {
       lines.push(`- \u6807\u7B7E: ${labels.map(([k, v]) => `${k}=${v}`).join(", ")}`);
@@ -547,15 +557,48 @@ async function handleListRuntimes(client) {
   return ok(lines.join("\n"));
 }
 async function handleListProviders(client) {
-  const { providers } = await client.get("/v1/providers");
+  const [{ providers }, runtimesResponse] = await Promise.all([
+    client.get("/v1/providers"),
+    client.get("/v1/runtimes")
+  ]);
   if (providers.length === 0) {
     return ok("\u8BE5 Gateway \u672A\u914D\u7F6E\u4EFB\u4F55 Provider\u3002");
+  }
+  const schedulable = runtimesResponse.runtimes.filter(isSchedulable);
+  const declaredBy = /* @__PURE__ */ new Map();
+  let legacyRunnerCount = 0;
+  for (const runtime of schedulable) {
+    const reported = runtime.capabilities.providerOperations;
+    if (!reported || Object.keys(reported).length === 0) {
+      legacyRunnerCount += 1;
+      continue;
+    }
+    for (const [providerId, operations] of Object.entries(reported)) {
+      const claims = declaredBy.get(providerId) ?? [];
+      claims.push({ runtimeId: runtime.id, operations });
+      declaredBy.set(providerId, claims);
+    }
   }
   const lines = [`\u5171 ${providers.length} \u4E2A Provider\uFF1A`];
   for (const provider of providers) {
     lines.push(`- ${provider.id} \xB7 type=${provider.type} \xB7 enabled=${provider.enabled} \xB7 runtime=${JSON.stringify(provider.runtime)}`);
+    const claims = declaredBy.get(provider.id);
+    if (claims && claims.length > 0) {
+      lines.push(`  - \u53EF\u7528\u64CD\u4F5C: ${claims.map((claim) => `${claim.operations.join(",") || "\u65E0"}@${claim.runtimeId}`).join(" \xB7 ")}`);
+    } else if (schedulable.length === 0) {
+      lines.push("  - \u53EF\u7528\u64CD\u4F5C: \u672A\u77E5\uFF08\u5F53\u524D\u6CA1\u6709\u5728\u7EBF Runner\uFF09");
+    } else {
+      lines.push("  - \u53EF\u7528\u64CD\u4F5C: \u672A\u4E0A\u62A5\uFF08\u5728\u7EBF Runner \u6CA1\u6709\u58F0\u660E\u8FD9\u4E2A Provider\uFF09");
+    }
   }
-  lines.push("", "\u8C03\u7528 Search \u65F6\u53EF\u7528 sources \u663E\u5F0F\u6307\u5B9A\u4E0A\u8FF0 id\uFF08\u5982 sources=A,B\uFF09\uFF0C\u6216\u6539\u7528 route \u8DEF\u7531\u540D\u3002");
+  const caveats = [];
+  if (legacyRunnerCount > 0) {
+    caveats.push(`\u6709 ${legacyRunnerCount} \u4E2A\u5728\u7EBF Runner \u672A\u4E0A\u62A5 Provider \u80FD\u529B\uFF08\u65E7\u7248\u672C\uFF09\uFF1A\u5B83\u4EEC\u7684 Provider \u4F1A\u663E\u793A\u4E3A\u300C\u672A\u4E0A\u62A5\u300D\uFF0C\u5B9E\u9645\u53EF\u80FD\u4ECD\u652F\u6301 search\u3002`);
+  }
+  if (schedulable.length === 0) {
+    caveats.push("\u5F53\u524D\u6CA1\u6709\u5728\u7EBF Runner\uFF0C\u4EFB\u4F55\u68C0\u7D22\u90FD\u4F1A\u62A5\u300C\u65E0\u53EF\u7528\u6267\u884C\u8282\u70B9\u300D\u3002");
+  }
+  lines.push("", "\u8C03\u7528 Search \u65F6\u53EF\u7528 sources \u663E\u5F0F\u6307\u5B9A\u4E0A\u8FF0 id\uFF08\u5982 sources=tavily \u6216 sources=tavily,exa\uFF09\uFF0C\u6216\u6539\u7528 route \u8DEF\u7531\u540D\u3002", "Extract **\u53EA\u6709\u58F0\u660E\u4E86 extract \u7684 Provider \u53EF\u7528**\uFF1B`url-fetch` \u4E0E `x` \u4E0D\u63D0\u4F9B\u8BE5\u80FD\u529B\u3002", ...caveats);
   return ok(lines.join("\n"));
 }
 
@@ -563,17 +606,17 @@ async function handleListProviders(client) {
 var COMMANDS = [
   {
     name: "Search",
-    description: "\u529F\u80FD: \u901A\u8FC7 Aylens Gateway \u6267\u884C\u7EDF\u4E00\u4E92\u8054\u7F51\u68C0\u7D22\uFF08url-fetch / x-search \u7B49 Provider\uFF09\uFF0C\u8FD4\u56DE\u6807\u9898\u3001URL\u3001\u6765\u6E90\u4E0E\u6B63\u6587 Markdown\u3002\n`command` \u56FA\u5B9A\u4E3A `Search`\uFF0C\u4E0D\u5F97\u586B\u5199 URL\u3001\u8DEF\u5F84\u6216\u81EA\u7136\u8BED\u8A00\u3002\n`query` \u662F\u68C0\u7D22\u5185\u5BB9\u672C\u4F53\uFF1A\u6293\u53D6\u6307\u5B9A\u7F51\u9875\u65F6\u76F4\u63A5\u5199\u8BE5 URL\uFF1BX \u68C0\u7D22\u65F6\u5199 X \u68C0\u7D22\u5F0F\u3002\n`sources` \u53EF\u663E\u5F0F\u6307\u5B9A Provider \u5B9E\u4F8B\uFF08\u9017\u53F7\u5206\u9694\uFF09\uFF0C`route` \u53EF\u6307\u5B9A Gateway \u8DEF\u7531\u540D\uFF0C\u4E8C\u8005\u90FD\u4E0D\u586B\u5219\u8D70\u9ED8\u8BA4\u8DEF\u7531\u3002\n`limit` \u4E3A\u671F\u671B\u6761\u6570\uFF081-100\uFF09\uFF0C`language` \u4E3A\u8BED\u8A00\u504F\u597D\u3002",
+    description: '\u529F\u80FD: \u901A\u8FC7 Aylens Gateway \u6267\u884C\u7EDF\u4E00\u4E92\u8054\u7F51\u68C0\u7D22\uFF0C\u8FD4\u56DE\u6807\u9898\u3001URL\u3001\u6765\u6E90\u4E0E\u6B63\u6587\u3002\n`command` \u56FA\u5B9A\u4E3A `Search`\uFF0C\u4E0D\u5F97\u586B\u5199 URL\u3001\u8DEF\u5F84\u6216\u81EA\u7136\u8BED\u8A00\u3002\n`query` \u7684\u8BED\u4E49**\u968F\u6E20\u9053\u53D8\u5316**\uFF0C\u4E0D\u8981\u6DF7\u7528\uFF1A\n  \xB7 `url-fetch`\uFF1A`query` \u76F4\u63A5\u5199\u8981\u6293\u53D6\u7684 URL\uFF1B\n  \xB7 `x-search`\uFF1A`query` \u5199 X \u539F\u751F\u68C0\u7D22\u5F0F\uFF08\u5982 "OpenAI" lang:en\uFF09\uFF1B\n  \xB7 `tavily` / `exa` / `anysearch`\uFF1A`query` \u5199\u81EA\u7136\u8BED\u8A00\u68C0\u7D22\u5F0F\uFF08\u5982 Go 1.26 release notes\uFF09\uFF0C\n    \u8FD9\u4E09\u5BB6\u662F API \u578B\u68C0\u7D22\u6E20\u9053\uFF0C\u9002\u5408\u300C\u627E\u8D44\u6599\u300D\uFF1B`url-fetch` \u9002\u5408\u300C\u5DF2\u77E5 URL \u53D6\u6B63\u6587\u300D\u3002\n  \u5B83\u4EEC\u81EA\u5DF1\u5C31\u80FD\u8FD4\u56DE\u6B63\u6587\uFF08tavily \u53EF\u8FD4\u56DE Markdown\u3001anysearch \u53EF\u8FD4\u56DE Markdown\u3001exa \u4E3A\u7EAF\u6587\u672C\uFF09\uFF0C\n  \u56E0\u6B64\u62FF\u5230\u8FD9\u6279\u6E20\u9053\u7684\u7ED3\u679C\u540E**\u4E0D\u9700\u8981**\u518D\u5BF9\u540C\u4E00\u6279 URL \u8C03\u4E00\u6B21 `Extract`\u3002\n`sources` \u53EF\u663E\u5F0F\u6307\u5B9A Provider \u5B9E\u4F8B\uFF08\u9017\u53F7\u5206\u9694\uFF0C\u4F8B\u5982 `tavily` \u6216 `tavily,exa`\uFF09\uFF0C\n`route` \u53EF\u6307\u5B9A Gateway \u8DEF\u7531\u540D\uFF08`tavily` / `exa` / `anysearch` \u5747\u6709\u540C\u540D\u8DEF\u7531\uFF09\uFF0C\u4E8C\u8005\u90FD\u4E0D\u586B\u5219\u8D70\u9ED8\u8BA4\u8DEF\u7531\u3002\nAPI \u6E20\u9053\u9ED8\u8BA4\u53EF\u80FD\u662F\u505C\u6B62\u72B6\u6001\uFF1B\u5148\u7528 `ListProviders` \u786E\u8BA4 enabled \u4E0E\u53EF\u7528\u64CD\u4F5C\u518D\u53D1\u8D77\u68C0\u7D22\u3002\n`limit` \u4E3A\u671F\u671B\u6761\u6570\uFF081-100\uFF0C\u6CE8\u610F anysearch \u4E0A\u6E38\u6700\u591A 10 \u6761\u3001\u4F1A\u5728\u7ED3\u679C\u91CC\u6807\u6CE8\u88AB\u622A\u65AD\uFF09\uFF0C`language` \u4E3A\u8BED\u8A00\u504F\u597D\u3002',
     exampleParams: [
-      { key: "query", value: "https://example.com" },
-      { key: "sources", value: "url-fetch" },
+      { key: "query", value: "Go 1.26 release notes" },
+      { key: "sources", value: "tavily" },
       { key: "limit", value: "5" }
     ],
     run: handleSearch
   },
   {
     name: "Extract",
-    description: "\u529F\u80FD: \u5BF9\u663E\u5F0F URL \u5217\u8868\u63D0\u53D6\u6B63\u6587\uFF08\u4E0E Search \u662F\u4E24\u4E2A\u72EC\u7ACB\u80FD\u529B\uFF09\uFF0C\u8FD4\u56DE Markdown \u6216\u7EAF\u6587\u672C\u3001\u9010\u6761\u6210\u529F/\u5931\u8D25\u72B6\u6001\u3002\n`command` \u56FA\u5B9A\u4E3A `Extract`\uFF0C\u4E0D\u5F97\u586B\u5199 URL\u3001\u8DEF\u5F84\u6216\u81EA\u7136\u8BED\u8A00\u3002\n`urls` \u662F\u8981\u63D0\u53D6\u7684 HTTP(S) \u5730\u5740\u5217\u8868\uFF08\u9017\u53F7\u6216\u6362\u884C\u5206\u9694\uFF09\u3002\n`sources` \u5FC5\u586B\uFF0C\u6307\u5B9A\u63D0\u53D6\u6765\u6E90\uFF08\u5982 `tavily`\uFF09\uFF1B\u4E0D\u4F1A\u9ED8\u8BA4\u8C03\u7528\u6240\u6709\u63D0\u53D6\u670D\u52A1\uFF0C\u4E5F\u4E0D\u590D\u7528 Search \u7684\u9ED8\u8BA4\u8DEF\u7531\u3002\n`limit` \u4E3A\u671F\u671B\u8FD4\u56DE\u6761\u6570\uFF081-100\uFF09\uFF0C`content` \u63A7\u5236\u6B63\u6587\u683C\u5F0F\uFF08markdown \u6216 text\uFF09\u3002",
+    description: "\u529F\u80FD: \u5BF9\u663E\u5F0F URL \u5217\u8868\u63D0\u53D6\u6B63\u6587\uFF08\u4E0E Search \u662F\u4E24\u4E2A\u72EC\u7ACB\u80FD\u529B\uFF09\uFF0C\u8FD4\u56DE Markdown \u6216\u7EAF\u6587\u672C\u3001\u9010\u6761\u6210\u529F/\u5931\u8D25\u72B6\u6001\u3002\n`command` \u56FA\u5B9A\u4E3A `Extract`\uFF0C\u4E0D\u5F97\u586B\u5199 URL\u3001\u8DEF\u5F84\u6216\u81EA\u7136\u8BED\u8A00\u3002\n`urls` \u662F\u8981\u63D0\u53D6\u7684 HTTP(S) \u5730\u5740\u5217\u8868\uFF08\u9017\u53F7\u6216\u6362\u884C\u5206\u9694\uFF09\u3002\n`sources` \u5FC5\u586B\uFF0C\u6307\u5B9A\u63D0\u53D6\u6765\u6E90\uFF08\u5982 `tavily`\uFF09\uFF1B\u4E0D\u4F1A\u9ED8\u8BA4\u8C03\u7528\u6240\u6709\u63D0\u53D6\u670D\u52A1\uFF0C\u4E5F\u4E0D\u590D\u7528 Search \u7684\u9ED8\u8BA4\u8DEF\u7531\u3002\n**\u53EA\u6709 `tavily` / `exa` / `anysearch` \u63D0\u4F9B\u8FD9\u4E00\u80FD\u529B**\uFF08`url-fetch` \u4E0E `x` \u6CA1\u6709\uFF0C\u586B\u4E86\u4F1A\u5931\u8D25\uFF09\uFF0C\n\u4E09\u5BB6\u7684\u53D6\u820D\uFF1Atavily \u5355\u6B21\u6700\u591A 20 \u4E2A URL\u3001\u53EF\u7ED9 Markdown\uFF1Bexa \u5355\u6B21\u6700\u591A 100 \u4E2A URL\u3001\u6B63\u6587**\u53EA\u6709\u7EAF\u6587\u672C**\uFF1B\nanysearch \u4E0A\u6E38**\u4E00\u6B21\u53EA\u63A5\u53D7 1 \u4E2A URL**\uFF08Aylens \u4F1A\u81EA\u52A8\u6709\u754C\u5E76\u53D1\uFF09\uFF0CURL \u8D8A\u591A\u8D8A\u6162\uFF0C\u522B\u62FF\u5B83\u8DD1\u957F\u5217\u8868\u3002\n`limit` \u4E3A\u671F\u671B\u8FD4\u56DE\u6761\u6570\uFF081-100\uFF09\uFF0C`content` \u63A7\u5236\u6B63\u6587\u683C\u5F0F\uFF08markdown \u6216 text\uFF09\u3002",
     exampleParams: [
       { key: "urls", value: "https://example.com/article" },
       { key: "sources", value: "tavily" },
