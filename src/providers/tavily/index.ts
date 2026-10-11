@@ -135,14 +135,13 @@ export function createTavilyFactory(): ProviderFactory {
           const params = resolveExtractParams(deploymentOptions, request.providerOptions);
           const format = contentFormatOf(request);
           const items: ExtractItem[] = [];
-          const batches: string[][] = [];
-          for (let index = 0; index < request.urls.length; index += NATIVE_EXTRACT_BATCH) {
-            batches.push(request.urls.slice(index, index + NATIVE_EXTRACT_BATCH));
-          }
 
           let serviceFailure: unknown;
+          // 至少有一个批次拿到响应，就不算服务级失败：保留已抓到的内容更重要。
+          let anyBatchResponded = false;
 
-          for (const urls of batches) {
+          for (let batchStart = 0; batchStart < request.urls.length; batchStart += NATIVE_EXTRACT_BATCH) {
+            const urls = request.urls.slice(batchStart, batchStart + NATIVE_EXTRACT_BATCH);
             try {
               const { envelope, requestId } = await client.call<TavilyExtractEnvelope>(
                 providerContext,
@@ -150,6 +149,7 @@ export function createTavilyFactory(): ProviderFactory {
                 { urls, format, ...params },
                 "extract",
               );
+              anyBatchResponded = true;
               const usage = readUsage(envelope);
               items.push(...mapExtractResults(
                 urls,
@@ -161,6 +161,8 @@ export function createTavilyFactory(): ProviderFactory {
                   fetchedAt: new Date().toISOString(),
                   serviceRequestId: requestId,
                   usageCredits: usage.credits,
+                  // 索引在整个请求范围内下移，避免跨批次索引碰撞。
+                  indexOffset: batchStart,
                 },
                 format,
               ));
@@ -168,8 +170,8 @@ export function createTavilyFactory(): ProviderFactory {
               // 部分批次失败时保留已抓到的内容：把这批 URL 标为失败，而不是丢弃全部。
               if (serviceFailure === undefined) serviceFailure = error;
               const itemError = toSafeItemError(error);
-              items.push(...urls.map((url) => ({
-                index: request.urls.indexOf(url),
+              items.push(...urls.map((url, offset) => ({
+                index: batchStart + offset,
                 url,
                 status: "failed" as const,
                 error: itemError,
@@ -177,9 +179,11 @@ export function createTavilyFactory(): ProviderFactory {
             }
           }
 
-          // 全部批次都失败时按服务级错误上抛，让 meta 如实记录失败原因；
-          // 只要还有成功批次就返回部分结果，由 ExtractService 判定 partial。
-          if (items.length === 0 && serviceFailure !== undefined) throw serviceFailure;
+          // 全部批次都以服务级错误失败时上抛，让 meta 与审计如实记录错误码；
+          // 只要还有一批拿到响应就返回逐项结果，由 ExtractService 判定 partial。
+          // （注意：不能用 items.length === 0 判定 —— 失败分支也会补逐项失败项，
+          //   那样写会让这个分支永远不可达，注释意图与实际行为不符。）
+          if (!anyBatchResponded && serviceFailure !== undefined) throw serviceFailure;
 
           return { items: items.sort((a, b) => a.index - b.index) };
         },

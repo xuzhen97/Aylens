@@ -29,7 +29,7 @@ interface RecordedCall {
 
 /** 记录每次上游调用，并按 URL 段返回预设响应。 */
 function harness(
-  respond: (path: string) => { status: number; headers?: Record<string, string>; body: string },
+  respond: (path: string, body: Record<string, unknown>) => { status: number; headers?: Record<string, string>; body: string },
   state: CredentialRuntimeState = poolState,
 ) {
   const calls: RecordedCall[] = [];
@@ -38,7 +38,8 @@ function harness(
     request: async ({ url, headers, body }: TransportRequest): Promise<TransportResponse> => {
       calls.push({ url, headers, body });
       const path = new URL(url).pathname;
-      const result = respond(path);
+      const parsed = body ? JSON.parse(body) as Record<string, unknown> : {};
+      const result = respond(path, parsed);
       return { status: result.status, headers: new Headers(result.headers ?? {}), body: result.body };
     },
   };
@@ -287,19 +288,61 @@ describe("Tavily extract", () => {
     expect(items[1]?.status).toBe("success");
   });
 
-  it("splits extracts that exceed the native batch size", async () => {
-    const { provider, calls } = harness(() => ({
+  it("splits extracts that exceed the native batch size, keeping global indexes", async () => {
+    const { provider, calls } = harness((_path, body) => ({
       status: 200,
-      body: extractBody([]),
+      body: extractBody((body.urls as string[]).map((url) => ({ url, raw_content: `content of ${url}` }))),
     }));
 
     const urls = Array.from({ length: 45 }, (_, index) => `https://example.com/${index}`);
-    await provider.extract!(ctx, { urls, sources: ["tavily"] });
+    const { items } = await provider.extract!(ctx, { urls, sources: ["tavily"] });
 
     const batchSizes = calls
       .filter((call) => call.url.endsWith("/extract"))
       .map((call) => (JSON.parse(call.body ?? "{}") as { urls?: string[] }).urls?.length ?? 0);
     expect(batchSizes).toEqual([20, 20, 5]);
+
+    // 第二、三批次不能从 0 重新计数：索引碰撞会让公共层把内容归到错误的 URL 上，
+    // 并把后续批次误判成「没有 Provider 返回结果」。
+    expect(items).toHaveLength(45);
+    expect(items.map((item) => item.index)).toEqual(urls.map((_, index) => index));
+    expect(items[44]).toMatchObject({ index: 44, url: urls[44], status: "success" });
+    expect(items[44]?.document?.text).toBe(`content of ${urls[44]}`);
+  });
+
+  it("keeps successful batches when a later batch fails", async () => {
+    let call = 0;
+    const { provider } = harness((_path, body) => {
+      call += 1;
+      if (call === 2) return { status: 500, body: JSON.stringify({ error: "upstream down" }) };
+      return {
+        status: 200,
+        body: extractBody((body.urls as string[]).map((url) => ({ url, raw_content: `content of ${url}` }))),
+      };
+    });
+
+    const urls = Array.from({ length: 21 }, (_, index) => `https://example.com/${index}`);
+    const { items } = await provider.extract!(ctx, { urls, sources: ["tavily"] });
+
+    expect(items).toHaveLength(21);
+    expect(items[0]).toMatchObject({ index: 0, status: "success" });
+    // 第二批只有 1 个 URL，失败项必须落在全局索引 20，而不是 0。
+    expect(items[20]).toMatchObject({ index: 20, url: urls[20], status: "failed" });
+  });
+
+  it("surfaces a service-level failure when every batch fails", async () => {
+    const { provider } = harness(() => ({
+      status: 401,
+      body: JSON.stringify({ detail: { error: "invalid api key for this team" } }),
+    }));
+
+    const error = await provider.extract!(ctx, { urls: ["https://a.example/one"], sources: ["tavily"] })
+      .catch((caught: unknown) => caught);
+
+    // 全部批次都以服务级错误失败时上抛，让 meta 与审计拿到真实错误码，
+    // 而不是把它摊成逐项失败、丢掉 meta 里的原因。
+    expect(error).toMatchObject({ code: "UPSTREAM_AUTH_FAILED" });
+    expect(String(error)).not.toContain("invalid api key for this team");
   });
 
   it("reports an all-failed response as failed items without leaking upstream text", async () => {

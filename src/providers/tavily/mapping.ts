@@ -123,7 +123,21 @@ export function mapExtractResults(
   inputs: string[],
   succeeded: TavilyExtractResult[],
   failed: TavilyFailedResult[],
-  context: { requestId: string; runtimeId: string; fetchedAt: string; serviceRequestId?: string | undefined; usageCredits?: number | undefined },
+  context: {
+    requestId: string;
+    runtimeId: string;
+    fetchedAt: string;
+    serviceRequestId?: string | undefined;
+    usageCredits?: number | undefined;
+    /**
+     * 本次映射的输入在整个请求 URL 列表中的起始下标。
+     *
+     * 分批调用时上游只看到本批的 URL，若不下移索引，第二批次会从 0 重新计数，
+     * 与上一批的索引碰撞 —— 公共层按索引归并，碰撞会让内容错位、并让后续批次
+     * 被误判成「没有 Provider 返回结果」。
+     */
+    indexOffset: number;
+  },
   format: "markdown" | "text",
 ): ExtractItem[] {
   const successByUrl = new Map<string, TavilyExtractResult>();
@@ -138,7 +152,8 @@ export function mapExtractResults(
     if (url !== undefined) failedUrls.add(url);
   }
 
-  return inputs.map((url, index) => {
+  return inputs.map((url, offset) => {
+    const index = context.indexOffset + offset;
     const success = successByUrl.get(url);
     if (success === undefined) {
       return {
