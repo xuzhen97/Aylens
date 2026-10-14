@@ -324,6 +324,31 @@ describe("url-fetch provider orchestration", () => {
     expect(healthy.calls).toHaveLength(1);
   });
 
+  it("falls back to the next transport when the primary transport times out and budget remains", async () => {
+    const timingOut = new FakeTransport("primary", () => new RetrievalError("TIMEOUT", "stalled on proxy", { retryable: true }));
+    const backup = new FakeTransport("backup", () => ({
+      headers: { "content-type": "text/plain" },
+      body: "from backup after timeout",
+    }));
+
+    const registry = registryFor([
+      { id: "primary", transport: timingOut },
+      { id: "backup", transport: backup },
+    ]);
+
+    const provider = urlFetchFactory.create("url-fetch", {
+      type: "url-fetch",
+      options: { timeoutMs: 30_000, httpTimeoutMs: 5_000 },
+      transport: { primary: "primary", fallback: ["backup"] },
+    }, { transports: registry, defaultBrowserProfile: "browser-main" });
+
+    const result = await provider.search(context, { query: target });
+
+    expect(result.items[0]?.markdown).toContain("from backup after timeout");
+    expect(timingOut.calls).toHaveLength(1);
+    expect(backup.calls).toHaveLength(1);
+  });
+
   it("does not retry a deterministic resource rejection on another transport", async () => {
     const limited = new FakeTransport("direct", () => new RetrievalError("CONTENT_UNAVAILABLE", "too large"));
     const backup = new FakeTransport("backup", () => ({ body: "unused" }));

@@ -62,6 +62,7 @@ async function readStreamBytes(
       stream.removeListener("data", onData);
       stream.removeListener("end", onEnd);
       stream.removeListener("error", onError);
+      stream.removeListener("close", onClose);
       signal?.removeEventListener("abort", onAbort);
     };
 
@@ -103,6 +104,16 @@ async function readStreamBytes(
       fail(error);
     }
 
+    function onClose(): void {
+      if (!settled && !stream.readableEnded) {
+        fail(new RetrievalError(
+          "NETWORK_ERROR",
+          `${label} closed prematurely without completing`,
+          { retryable: true },
+        ));
+      }
+    }
+
     function onAbort(): void {
       fail(responseReadAbortedError());
     }
@@ -115,6 +126,7 @@ async function readStreamBytes(
     stream.on("data", onData);
     stream.on("end", onEnd);
     stream.on("error", onError);
+    stream.on("close", onClose);
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

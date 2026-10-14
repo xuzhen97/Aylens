@@ -39,9 +39,10 @@ providers:
       controlledProxyEgress: true
       # 注意这里不打开 controlledBrowserEgress：默认仍不启浏览器。
       # 若某些页确实必须渲染，会明确失败（或返回已抓到的静态内容），而不是静默开 Chrome。
-      # 代理链路比直连慢（本机实测 Wikipedia 直连超时、代理 8.1s/321KB），
-      # 因此 HTTP 阶段预算要放宽，否则会在读完前就 TIMEOUT。
-      httpTimeoutMs: 25000
+      # 总预算 30s，单次 HTTP 阶段预算 12s（Wikipedia 代理实测 ~8s，12s 充裕）。
+      # 当 primary 代理遇阻或超时时，剩余预算（~18s）可无缝切换至 fallback 直连。
+      timeoutMs: 30000
+      httpTimeoutMs: 12000
   x:
     type: x-search
   # Tavily：直接调用 HTTPS API，不占浏览器 Profile、不启动 Chrome。

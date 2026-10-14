@@ -147,7 +147,14 @@ async function runHttpTarget(params: FetchParams): Promise<HttpFetchResult> {
       );
     } catch (error) {
       if (!(error instanceof RetrievalError)) throw error;
-      if (!error.retryable || !RETRYABLE_TRANSPORT_CODES.has(error.code)) throw error;
+      if (!error.retryable) throw error;
+      if (error.code === "TIMEOUT") {
+        // 总预算耗尽时直接抛出超时，不再尝试下一个传输；若总预算仍有余量，记录并尝试 fallback。
+        if (params.budget.remainingMs() <= 0) throw error;
+        lastError = error;
+        continue;
+      }
+      if (!RETRYABLE_TRANSPORT_CODES.has(error.code)) throw error;
       lastError = error;
     } finally {
       httpBudget.dispose();

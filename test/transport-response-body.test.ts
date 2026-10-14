@@ -191,6 +191,19 @@ describe("constrained response reading", () => {
     await expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
   });
 
+  it("fails immediately with NETWORK_ERROR when connection is severed prematurely", async () => {
+    const port = await listen((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.write("partial-chunk");
+      response.destroy();
+    });
+
+    await expect(fetchWithPolicy(port, constrainedPolicy())).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+      retryable: true,
+    });
+  });
+
   it("does not follow redirects on the constrained path", async () => {
     let followed = 0;
     const targetPort = await listen((_request, response) => {

@@ -1,4 +1,5 @@
 import type { TransportConfig } from "../config/schema.js";
+import { RetrievalError } from "../core/errors.js";
 import { nodeRequest } from "./node-request.js";
 import type { HttpTransport, TransportFactory, TransportRequest, TransportResponse } from "./types.js";
 
@@ -6,17 +7,25 @@ export class DirectTransport implements HttpTransport {
   constructor(public readonly id: string) {}
 
   async request(request: TransportRequest): Promise<TransportResponse> {
-    // 受限获取必须手动处理重定向，并在读取阶段就限流、解压与解码；
-    // fetch 的自动重定向会绕过调用层的逐跳安全校验，因此这里改走 Node 请求路径。
-    if (request.responsePolicy) return nodeRequest(request);
+    try {
+      // 受限获取必须手动处理重定向，并在读取阶段就限流、解压与解码；
+      // fetch 的自动重定向会绕过调用层的逐跳安全校验，因此这里改走 Node 请求路径。
+      if (request.responsePolicy) return await nodeRequest(request);
 
-    const init: RequestInit = { method: request.method ?? "GET" };
-    if (request.headers) init.headers = request.headers;
-    if (request.body !== undefined) init.body = request.body;
-    if (request.signal) init.signal = request.signal;
+      const init: RequestInit = { method: request.method ?? "GET" };
+      if (request.headers) init.headers = request.headers;
+      if (request.body !== undefined) init.body = request.body;
+      if (request.signal) init.signal = request.signal;
 
-    const response = await fetch(request.url, init);
-    return { status: response.status, headers: response.headers, body: await response.text() };
+      const response = await fetch(request.url, init);
+      return { status: response.status, headers: response.headers, body: await response.text() };
+    } catch (error) {
+      if (error instanceof RetrievalError) throw error;
+      throw new RetrievalError("NETWORK_ERROR", `Direct HTTP request failed: ${this.id}`, {
+        retryable: true,
+        cause: error,
+      });
+    }
   }
 }
 
