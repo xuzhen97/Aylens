@@ -10,7 +10,8 @@
  * 为什么 manifest 的命令清单要生成而不是手写：见 src/commands.ts 的注释——
  * 手写清单和实现之间一定会漂移，而商店列表、示例、参数说明全都依赖它。
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
@@ -35,17 +36,37 @@ function readManifest() {
 	}
 }
 
+/**
+ * 从**源码**取命令集，而不是从 `dist/`。
+ *
+ * 背景：`tsconfig.json` 现在是 `noEmit`（共享核心按源码引入，保留 `rootDir` 会报 TS6059），
+ * 所以 `dist/commands.js` 不再存在。这里用 esbuild 把 `src/commands.ts` 现打成一个临时 ESM
+ * 入口再 import——既拿到了构建时生成的命令集，又不依赖任何 tsc 产物。
+ */
 async function generateInvocationCommands() {
-	const compiled = pathToFileURL(join(packageDir, "dist", "commands.js")).href;
-	const module = await import(compiled);
-	if (typeof module.buildInvocationCommands !== "function") {
-		throw new Error("dist/commands.js 未导出 buildInvocationCommands，请先执行 tsc");
+	const outfile = join(tmpdir(), `aylens-vcp-commands-${process.pid}.mjs`);
+	await build({
+		entryPoints: [join(packageDir, "src", "commands.ts")],
+		outfile,
+		bundle: true,
+		platform: "node",
+		format: "esm",
+		target: "node20",
+		logLevel: "warning",
+	});
+	try {
+		const module = await import(pathToFileURL(outfile).href);
+		if (typeof module.buildInvocationCommands !== "function") {
+			throw new Error("src/commands.ts 未导出 buildInvocationCommands");
+		}
+		return {
+			invocationCommands: module.buildInvocationCommands(),
+			commandNames: module.VCP_COMMANDS,
+			toolName: module.TOOL_NAME,
+		};
+	} finally {
+		rmSync(outfile, { force: true });
 	}
-	return {
-		invocationCommands: module.buildInvocationCommands(),
-		commandNames: module.VCP_COMMANDS,
-		toolName: module.TOOL_NAME,
-	};
 }
 
 function syncManifest(manifest, invocationCommands) {
@@ -58,8 +79,10 @@ function syncManifest(manifest, invocationCommands) {
 }
 
 async function bundleEntry() {
+	// 入口同样是源码：tsc 已改为 noEmit，共享核心由 esbuild 在打包时内联，
+	// 因此产物依旧是零 npm 运行时依赖的自洽单文件。
 	await build({
-		entryPoints: [join(packageDir, "dist", "index.js")],
+		entryPoints: [join(packageDir, "src", "index.ts")],
 		outfile: bundlePath,
 		bundle: true,
 		platform: "node",

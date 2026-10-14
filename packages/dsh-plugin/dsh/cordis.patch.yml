@@ -1,0 +1,17 @@
+# aylens-dsh bundle layer —— 手写源件，构建脚本不得覆盖或删除本文件。
+#
+# 装载方式：`dsh plugin --profile <name> add <本包路径或包名>`。
+# reconcilePlugins 侦测到本包声明了 dsh.bundle.patch，会把它并入 profile 的
+# dsh.profile.bundles；下次启动时本文件即作为一个 patch 层被应用，
+# 行里的 name 由宿主的 profile resolution 解析到本包（profile 插件对
+# @deepseek-ai/* 的 import 由宿主重定向到安装目录里的同一份）。
+#
+# config 段只放非密配置。凭据一律走环境变量（优先 $DSH_HOME/.env，由宿主的
+# loadLayeredEnv 加载）——本文件会随配置同步/备份链路离开本机，不该承载密钥。
+- insert:
+    - id: aylens-dsh
+      name: aylens-dsh
+      config:
+        baseUrl: http://127.0.0.1:3000
+        requestTimeoutMs: 120000
+        allowAuthLogin: false

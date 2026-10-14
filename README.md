@@ -31,6 +31,7 @@ Aylens 是一个面向 AI Agent 的统一互联网 Retrieval Gateway，使用 No
 - Admin UI
 - MCP tool adapter definitions
 - VCPToolBox 插件 AylensBridge（synchronous/stdio，零 npm 运行时依赖，PluginStore 可安装）
+- DeepSeek Harness 插件 aylens-dsh（Cordis bundle 层 + 4 个原生工具，自洽单文件）
 - 单元测试与 Gateway/Runner 集成测试
 
 核心执行链：
@@ -279,6 +280,7 @@ pnpm build
 | [docs/providers.md](./docs/providers.md) | Provider / Plugin / url-fetch |
 | [docs/api.md](./docs/api.md) | REST 与 MCP adapter |
 | [docs/vcp-plugin.md](./docs/vcp-plugin.md) | VCPToolBox 插件 AylensBridge：命令、安装、配置、验收与排查 |
+| [docs/dsh-plugin.md](./docs/dsh-plugin.md) | DeepSeek Harness 插件 aylens-dsh：四个原生工具、安装、凭据、验收与排查 |
 | [docs/admin-ui.md](./docs/admin-ui.md) | 后台 UI |
 | [docs/operations.md](./docs/operations.md) | 运行、验收、故障排查 |
 | [docs/testing.md](./docs/testing.md) | 测试与验证 |

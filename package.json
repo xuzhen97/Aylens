@@ -28,7 +28,13 @@
     "build": "node scripts/build-release.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
-    "smoke:url-fetch": "tsx scripts/smoke-url-fetch.ts"
+    "smoke:url-fetch": "tsx scripts/smoke-url-fetch.ts",
+    "test:bridge-core": "pnpm --filter @aylens/bridge-core test",
+    "typecheck:bridge-core": "pnpm --filter @aylens/bridge-core typecheck",
+    "build:dsh-plugin": "pnpm --filter aylens-dsh build",
+    "test:dsh-plugin": "pnpm --filter aylens-dsh test",
+    "typecheck:dsh-plugin": "pnpm --filter aylens-dsh typecheck",
+    "smoke:dsh-plugin": "node scripts/smoke-dsh-plugin.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

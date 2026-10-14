@@ -1,0 +1,982 @@
+// ../bridge-core/src/client.ts
+var AylensBridgeError = class extends Error {
+  code;
+  status;
+  constructor(code, message, status) {
+    super(message);
+    this.name = "AylensBridgeError";
+    this.code = code;
+    this.status = status;
+  }
+};
+function statusToCode(status) {
+  if (status === 401 || status === 403) return "AUTH_FAILED";
+  if (status === 404) return "NOT_FOUND";
+  if (status >= 500) return "GATEWAY_ERROR";
+  return "INVALID_REQUEST";
+}
+function extractGatewayMessage(payload) {
+  if (!payload || typeof payload !== "object") return void 0;
+  const error = payload.error;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const message = error.message;
+    if (typeof message === "string") return message;
+  }
+  return void 0;
+}
+var AylensClient = class {
+  config;
+  constructor(config) {
+    this.config = config;
+  }
+  async request(options) {
+    let url;
+    try {
+      url = new URL(`${this.config.baseUrl}${options.path}`);
+    } catch {
+      throw new AylensBridgeError(
+        "INVALID_REQUEST",
+        `\u62FC\u63A5\u51FA\u7684\u8BF7\u6C42\u5730\u5740\u975E\u6CD5\uFF1A${this.config.baseUrl}${options.path}`
+      );
+    }
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      url.searchParams.set(key, value);
+    }
+    const timeout = AbortSignal.timeout(this.config.requestTimeoutMs);
+    const signal = options.signal === void 0 ? timeout : AbortSignal.any([options.signal, timeout]);
+    const init = {
+      method: options.method,
+      headers: {
+        Authorization: `Bearer ${this.config.apiKey}`,
+        Accept: "application/json"
+      },
+      signal
+    };
+    if (options.body !== void 0) {
+      init.headers = { ...init.headers, "Content-Type": "application/json" };
+      init.body = JSON.stringify(options.body);
+    }
+    let response;
+    try {
+      response = await fetch(url, init);
+    } catch (err) {
+      const name2 = err instanceof Error ? err.name : "";
+      if (name2 === "TimeoutError" || name2 === "AbortError") {
+        if (options.signal?.aborted === true) {
+          throw new AylensBridgeError(
+            "ABORTED",
+            `\u8BF7\u6C42\u5DF2\u88AB\u8C03\u7528\u65B9\u53D6\u6D88\uFF1A${options.method} ${options.path}`
+          );
+        }
+        throw new AylensBridgeError(
+          "TIMEOUT",
+          `\u8BF7\u6C42 Aylens Gateway \u8D85\u65F6\uFF08${this.config.requestTimeoutMs}ms\uFF09\uFF1A${options.method} ${options.path}\u3002\u82E5\u547D\u4E2D\u6D4F\u89C8\u5668\u515C\u5E95\uFF0C\u8BF7\u8C03\u5927 REQUEST_TIMEOUT_MS\u3002`
+        );
+      }
+      throw new AylensBridgeError(
+        "GATEWAY_UNREACHABLE",
+        `\u65E0\u6CD5\u8FDE\u63A5 Aylens Gateway\uFF08${this.config.baseUrl}\uFF09\uFF1A${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+    const raw = await response.text();
+    let payload;
+    if (raw.trim()) {
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        payload = void 0;
+      }
+    }
+    if (!response.ok) {
+      const detail = extractGatewayMessage(payload) ?? raw.slice(0, 300).trim();
+      throw new AylensBridgeError(
+        statusToCode(response.status),
+        `Aylens Gateway \u8FD4\u56DE HTTP ${response.status}${detail ? `\uFF1A${detail}` : ""}`,
+        response.status
+      );
+    }
+    if (payload === void 0) {
+      throw new AylensBridgeError(
+        "GATEWAY_ERROR",
+        `Aylens Gateway \u8FD4\u56DE\u4E86\u975E JSON \u54CD\u5E94\uFF1A${raw.slice(0, 200)}`
+      );
+    }
+    return payload;
+  }
+  get(path, query, signal) {
+    return this.request({
+      method: "GET",
+      path,
+      ...query === void 0 ? {} : { query },
+      ...signal === void 0 ? {} : { signal }
+    });
+  }
+  post(path, body, signal) {
+    return this.request({
+      method: "POST",
+      path,
+      ...body === void 0 ? {} : { body },
+      ...signal === void 0 ? {} : { signal }
+    });
+  }
+};
+
+// src/config.ts
+var DEFAULT_BASE_URL = "http://127.0.0.1:3000";
+var DEFAULT_TIMEOUT_MS = 12e4;
+var DEFAULT_API_KEY_ENV = "AYLENS_API_KEY";
+var TRUTHY = ["1", "true", "yes", "on"];
+function coerceBoolean(value) {
+  if (value === true) return true;
+  if (typeof value !== "string") return false;
+  return TRUTHY.includes(value.trim().toLowerCase());
+}
+function stringOrUndefined(value) {
+  return typeof value === "string" && value.length > 0 ? value : void 0;
+}
+function resolveConfig(raw = {}) {
+  const configuredBaseUrl = stringOrUndefined(raw.baseUrl);
+  const baseUrl = (configuredBaseUrl ?? stringOrUndefined(process.env.AYLENS_BASE_URL) ?? DEFAULT_BASE_URL).replace(
+    /\/+$/,
+    ""
+  );
+  const apiKeyEnv = stringOrUndefined(raw.apiKeyEnv) ?? DEFAULT_API_KEY_ENV;
+  const apiKey = process.env[apiKeyEnv] ?? process.env[DEFAULT_API_KEY_ENV] ?? "";
+  const timeout = raw.requestTimeoutMs;
+  const requestTimeoutMs = typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT_MS;
+  return { baseUrl, apiKey, requestTimeoutMs, allowAuthLogin: coerceBoolean(raw.allowAuthLogin) };
+}
+function assertConfigured(config) {
+  if (config.apiKey) return;
+  throw new AylensBridgeError(
+    "CONFIG_ERROR",
+    "\u7F3A\u5C11 Aylens API Key\uFF1A\u8BF7\u5728 $DSH_HOME/.env \u91CC\u8BBE\u7F6E AYLENS_API_KEY\uFF08\u6216\u5728\u542F\u52A8\u5BBF\u4E3B\u7684\u73AF\u5883\u91CC\u5BFC\u51FA\u540C\u540D\u53D8\u91CF\uFF09\u3002"
+  );
+}
+
+// src/tools/extract.ts
+import { defineTool } from "@deepseek-ai/dsh-tools";
+
+// ../bridge-core/src/capabilities.ts
+var SEARCH_FACTS_TEXT = [
+  "`query` \u7684\u8BED\u4E49\u968F\u6E20\u9053\u53D8\u5316\uFF0C\u4E0D\u8981\u6DF7\u7528\uFF1A",
+  "  \xB7 `url-fetch`\uFF1A`query` \u76F4\u63A5\u5199\u8981\u6293\u53D6\u7684 URL\uFF1B",
+  '  \xB7 `x-search`\uFF1A`query` \u5199 X \u539F\u751F\u68C0\u7D22\u5F0F\uFF08\u5982 "OpenAI" lang:en\uFF09\uFF1B',
+  "  \xB7 `tavily` / `exa` / `anysearch`\uFF1A`query` \u5199\u81EA\u7136\u8BED\u8A00\u68C0\u7D22\u5F0F\uFF08\u5982 Go 1.26 release notes\uFF09\uFF0C",
+  "    \u8FD9\u4E09\u5BB6\u662F API \u578B\u68C0\u7D22\u6E20\u9053\uFF0C\u9002\u5408\u300C\u627E\u8D44\u6599\u300D\uFF1B`url-fetch` \u9002\u5408\u300C\u5DF2\u77E5 URL \u53D6\u6B63\u6587\u300D\u3002",
+  "  \u5B83\u4EEC\u81EA\u5DF1\u5C31\u80FD\u8FD4\u56DE\u6B63\u6587\uFF08tavily \u53EF\u8FD4\u56DE Markdown\u3001anysearch \u53EF\u8FD4\u56DE Markdown\u3001exa \u4E3A\u7EAF\u6587\u672C\uFF09\uFF0C",
+  "  \u56E0\u6B64\u62FF\u5230\u8FD9\u6279\u6E20\u9053\u7684\u7ED3\u679C\u540E**\u4E0D\u9700\u8981**\u518D\u5BF9\u540C\u4E00\u6279 URL \u8C03\u4E00\u6B21 Extract\u3002",
+  "`sources` \u53EF\u663E\u5F0F\u6307\u5B9A Provider \u5B9E\u4F8B\uFF08\u9017\u53F7\u5206\u9694\uFF0C\u4F8B\u5982 `tavily` \u6216 `tavily,exa`\uFF09\uFF0C",
+  "`route` \u53EF\u6307\u5B9A Gateway \u8DEF\u7531\u540D\uFF08`tavily` / `exa` / `anysearch` \u5747\u6709\u540C\u540D\u8DEF\u7531\uFF09\uFF0C\u4E8C\u8005\u90FD\u4E0D\u586B\u5219\u8D70\u9ED8\u8BA4\u8DEF\u7531\u3002",
+  "API \u6E20\u9053\u9ED8\u8BA4\u53EF\u80FD\u662F\u505C\u6B62\u72B6\u6001\uFF1B\u5148\u786E\u8BA4 enabled \u4E0E\u53EF\u7528\u64CD\u4F5C\u518D\u53D1\u8D77\u68C0\u7D22\u3002",
+  "`limit` \u4E3A\u671F\u671B\u6761\u6570\uFF081-100\uFF0C\u6CE8\u610F anysearch \u4E0A\u6E38\u6700\u591A 10 \u6761\u3001\u4F1A\u5728\u7ED3\u679C\u91CC\u6807\u6CE8\u88AB\u622A\u65AD\uFF09\uFF0C`language` \u4E3A\u8BED\u8A00\u504F\u597D\u3002"
+].join("\n");
+var EXTRACT_FACTS_TEXT = [
+  "\u53EA\u6709 `tavily` / `exa` / `anysearch` \u63D0\u4F9B\u8FD9\u4E00\u80FD\u529B\uFF08`url-fetch` \u4E0E `x-search` \u6CA1\u6709\uFF0C\u586B\u4E86\u4F1A\u5931\u8D25\uFF09\u3002",
+  "\u4E09\u5BB6\u7684\u53D6\u820D\uFF1Atavily \u5355\u6B21\u6700\u591A 20 \u4E2A URL\u3001\u53EF\u7ED9 Markdown\uFF1Bexa \u5355\u6B21\u6700\u591A 100 \u4E2A URL\u3001\u6B63\u6587**\u53EA\u6709\u7EAF\u6587\u672C**\uFF1B",
+  "anysearch \u4E0A\u6E38**\u4E00\u6B21\u53EA\u63A5\u53D7 1 \u4E2A URL**\uFF08Aylens \u4F1A\u81EA\u52A8\u6709\u754C\u5E76\u53D1\uFF09\uFF0CURL \u8D8A\u591A\u8D8A\u6162\uFF0C\u522B\u62FF\u5B83\u8DD1\u957F\u5217\u8868\u3002",
+  "`limit` \u4E3A\u671F\u671B\u8FD4\u56DE\u6761\u6570\uFF081-100\uFF09\uFF0C`content` \u63A7\u5236\u6B63\u6587\u683C\u5F0F\uFF08markdown \u6216 text\uFF09\u3002"
+].join("\n");
+
+// ../bridge-core/src/operations.ts
+var MAX_LIMIT = 100;
+function assertLimit(limit) {
+  if (limit !== void 0 && (limit <= 0 || limit > MAX_LIMIT)) {
+    throw new AylensBridgeError("INVALID_REQUEST", `limit \u5FC5\u987B\u5728 1..${MAX_LIMIT} \u4E4B\u95F4\uFF0C\u6536\u5230\uFF1A${limit}`);
+  }
+}
+async function search(client, input, signal) {
+  assertLimit(input.limit);
+  const body = { query: input.query };
+  if (input.route !== void 0) body.route = input.route;
+  if (input.sources !== void 0) body.sources = input.sources;
+  if (input.language !== void 0) body.language = input.language;
+  if (input.limit !== void 0) body.limit = input.limit;
+  const response = await client.post("/v1/search", body, signal);
+  if (response.status === "failed" && response.items.length === 0) {
+    const details = Object.entries(response.meta?.providers ?? {}).map(([id, meta]) => `${id}: ${meta.error?.code ?? "FAILED"} ${meta.error?.message ?? ""}`.trim()).join("; ");
+    throw new AylensBridgeError(
+      "NO_RUNTIME",
+      `Aylens \u68C0\u7D22\u6574\u4F53\u5931\u8D25\uFF08requestId=${response.requestId}\uFF09${details ? `\uFF1A${details}` : ""}`
+    );
+  }
+  return response;
+}
+async function extract(client, input, signal) {
+  if (input.urls.length === 0) {
+    throw new AylensBridgeError("INVALID_REQUEST", "\u7F3A\u5C11\u5FC5\u586B\u53C2\u6570 urls\uFF1A\u8BF7\u7ED9\u51FA\u8981\u63D0\u53D6\u7684 HTTP(S) \u5730\u5740\u5217\u8868\u3002");
+  }
+  if (input.sources.length === 0) {
+    throw new AylensBridgeError(
+      "INVALID_REQUEST",
+      "\u7F3A\u5C11\u5FC5\u586B\u53C2\u6570 sources\uFF1A\u63D0\u53D6\u5FC5\u987B\u663E\u5F0F\u6307\u5B9A\u6765\u6E90\uFF0C\u4E0D\u4F1A\u9ED8\u8BA4\u8C03\u7528\u6240\u6709\u670D\u52A1\u3002"
+    );
+  }
+  assertLimit(input.limit);
+  const body = { urls: input.urls, sources: input.sources };
+  if (input.limit !== void 0) body.limit = input.limit;
+  if (input.content !== void 0) body.content = { format: input.content };
+  const response = await client.post("/v1/extract", body, signal);
+  const succeeded = response.items.filter((item) => item.status === "success");
+  if (succeeded.length === 0) {
+    const details = Object.entries(response.meta?.providers ?? {}).map(([id, meta]) => `${id}: ${meta.error?.code ?? "FAILED"}`).join("; ");
+    throw new AylensBridgeError(
+      "NO_RUNTIME",
+      `Aylens \u63D0\u53D6\u6CA1\u6709\u62FF\u5230\u4EFB\u4F55\u6B63\u6587\uFF08status=${response.status}\uFF09${details ? `\uFF1A${details}` : ""}`
+    );
+  }
+  return response;
+}
+async function getStatus(client, signal) {
+  const health = await client.get("/health", void 0, signal);
+  const ready = await client.get("/ready", void 0, signal);
+  return { health, ready };
+}
+function getOverview(client, signal) {
+  return client.get("/v1/admin/overview", void 0, signal);
+}
+function listRuntimes(client, signal) {
+  return client.get("/v1/runtimes", void 0, signal);
+}
+async function listProviders(client, signal) {
+  const [providersResponse, runtimesResponse] = await Promise.all([
+    client.get("/v1/providers", void 0, signal),
+    client.get("/v1/runtimes", void 0, signal)
+  ]);
+  return { providers: providersResponse.providers, runtimes: runtimesResponse.runtimes };
+}
+function checkProviderAuth(client, input, signal) {
+  return client.post(
+    `/v1/providers/${encodeURIComponent(input.providerId)}/auth/check`,
+    void 0,
+    signal
+  );
+}
+async function loginProviderAuth(client, input, signal) {
+  if (!client.config.allowAuthLogin) {
+    throw new AylensBridgeError(
+      "AUTH_LOGIN_DISABLED",
+      "\u767B\u5F55 Provider \u9ED8\u8BA4\u5173\u95ED\uFF1A\u5B83\u4F1A\u5728 Runner \u4E0A\u62C9\u8D77\u4E00\u4E2A\u53EF\u89C1 Chrome \u5E76\u53EF\u80FD\u6253\u65AD\u540C Profile \u7684\u8FDB\u884C\u4E2D\u4EFB\u52A1\u3002\u786E\u8BA4\u8981\u542F\u7528\u65F6\uFF0C\u8BF7\u663E\u5F0F\u6253\u5F00 allowAuthLogin\uFF08VCP \u4FA7\u4E3A AYLENS_ALLOW_AUTH_LOGIN=true\uFF0CDSH \u4FA7\u4E3A patch config \u7684 allowAuthLogin\uFF09\u3002"
+    );
+  }
+  if (input.confirm !== input.providerId) {
+    throw new AylensBridgeError(
+      "AUTH_LOGIN_DISABLED",
+      `\u4E8C\u6B21\u786E\u8BA4\u672A\u901A\u8FC7\uFF1A\u8BF7\u628A confirm \u5199\u6210\u4E0E providerId \u5B8C\u5168\u76F8\u540C\u7684\u503C\uFF08\u5F53\u524D providerId=${input.providerId}\uFF09\u3002`
+    );
+  }
+  return client.post(
+    `/v1/providers/${encodeURIComponent(input.providerId)}/auth/login`,
+    void 0,
+    signal
+  );
+}
+function getAudit(client, input, signal) {
+  return client.get(`/v1/audit/${encodeURIComponent(input.requestId)}`, void 0, signal);
+}
+
+// ../bridge-core/src/render.ts
+var MAX_DOC_BODY_CHARS = 4e3;
+var MAX_TOTAL_BODY_CHARS = 28e3;
+var MAX_SNIPPET_CHARS = 600;
+function bodyOf(item) {
+  return (item.markdown ?? item.text ?? "").trim();
+}
+function isSearchBodyTruncated(items) {
+  let budget = MAX_TOTAL_BODY_CHARS;
+  for (const item of items) {
+    const body = bodyOf(item);
+    if (!body) continue;
+    const allowed = Math.max(0, Math.min(MAX_DOC_BODY_CHARS, budget));
+    if (allowed === 0) return true;
+    if (body.length > allowed) return true;
+    budget -= body.length;
+  }
+  return false;
+}
+function isExtractBodyTruncated(items) {
+  return items.some((item) => bodyOf(item).length > MAX_DOC_BODY_CHARS);
+}
+function formatAge(timestamp) {
+  const deltaMs = Date.now() - timestamp;
+  if (!Number.isFinite(deltaMs)) return "\u672A\u77E5";
+  if (deltaMs < 0) return "\u521A\u521A";
+  const seconds = Math.round(deltaMs / 1e3);
+  if (seconds < 60) return `${seconds}s \u524D`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m \u524D`;
+  return `${Math.round(minutes / 60)}h \u524D`;
+}
+function truncate(text, limit) {
+  if (text.length <= limit) return { value: text, truncated: false };
+  return { value: text.slice(0, limit), truncated: true };
+}
+function summarize(doc) {
+  const source = doc.snippet ?? doc.text;
+  if (!source) return void 0;
+  return truncate(source.replace(/\s+/g, " ").trim(), MAX_SNIPPET_CHARS).value;
+}
+function renderSearchResponse(response) {
+  const lines = [];
+  const providerEntries = Object.entries(response.meta?.providers ?? {});
+  const okProviders = providerEntries.filter(([, meta]) => meta.status === "success");
+  const failedProviders = providerEntries.filter(([, meta]) => meta.status === "failed");
+  lines.push(
+    `\u68C0\u7D22\u5B8C\u6210 \xB7 status=${response.status} \xB7 \u547D\u4E2D ${response.items.length} \u6761 \xB7 requestId=${response.requestId}`
+  );
+  if (providerEntries.length > 0) {
+    lines.push(
+      `Provider\uFF1A${okProviders.length}/${providerEntries.length} \u6210\u529F`,
+      ...providerEntries.map(([id, meta]) => {
+        const base = `- ${id}\uFF1A${meta.status} \xB7 ${meta.resultCount} \u6761 \xB7 ${meta.latencyMs}ms${meta.runtimeId ? ` \xB7 runtime=${meta.runtimeId}` : ""}`;
+        return meta.error ? `${base} \xB7 ${meta.error.code}: ${meta.error.message}` : base;
+      })
+    );
+  }
+  if (failedProviders.length > 0 && response.items.length === 0) {
+    lines.push("", "\u26A0\uFE0F \u5168\u90E8 Provider \u5931\u8D25\uFF0C\u4E0A\u9762\u6BCF\u884C\u7684 error \u5C31\u662F\u6839\u56E0\uFF1B\u4E0D\u8981\u628A\u5B83\u5F53\u6210\u300C\u67E5\u65E0\u7ED3\u679C\u300D\u3002");
+  }
+  if (response.items.length === 0 && failedProviders.length === 0) {
+    lines.push(
+      "",
+      "\uFF08\u5408\u6CD5\u7A7A\u7ED3\u679C\uFF1AProvider \u5DF2\u6267\u884C\u4F46\u6CA1\u6709\u547D\u4E2D\u3002\u82E5\u8FD9\u4E0D\u7B26\u5408\u9884\u671F\uFF0C\u68C0\u67E5 Gateway \u7684 route / sources \u914D\u7F6E\u3002\uFF09"
+    );
+  }
+  let bodyBudget = MAX_TOTAL_BODY_CHARS;
+  response.items.forEach((doc, index) => {
+    const title = doc.title?.trim() || `\uFF08\u65E0\u6807\u9898\uFF09${doc.id}`;
+    lines.push("", `### ${index + 1}. ${title}`);
+    lines.push(`- URL: ${doc.canonicalUrl ?? doc.url}`);
+    lines.push(
+      `- \u6765\u6E90: ${doc.platform} \xB7 provider=${doc.provenance.provider} \xB7 method=${doc.provenance.retrievalMethod}`
+    );
+    if (doc.publishedAt) lines.push(`- \u53D1\u5E03: ${doc.publishedAt}`);
+    lines.push(`- \u6293\u53D6: ${doc.retrievedAt}`);
+    if (doc.provenance.runtimeId) lines.push(`- runtime: ${doc.provenance.runtimeId}`);
+    const snippet = summarize(doc);
+    if (snippet) lines.push(`- \u6458\u8981: ${snippet}`);
+    const body = doc.markdown ?? doc.text;
+    if (body && body.trim()) {
+      const budget = Math.max(0, Math.min(MAX_DOC_BODY_CHARS, bodyBudget));
+      if (budget > 0) {
+        const { value, truncated } = truncate(body.trim(), budget);
+        bodyBudget -= value.length;
+        lines.push("", truncated ? `${value}
+
+\u2026\uFF08\u6B63\u6587\u5DF2\u622A\u65AD\uFF09` : value);
+      } else {
+        lines.push("", "\u2026\uFF08\u6B63\u6587\u603B\u91CF\u5DF2\u8FBE\u4E0A\u9650\uFF0C\u5269\u4F59\u6587\u6863\u6B63\u6587\u7701\u7565\uFF09");
+      }
+    }
+  });
+  return lines.join("\n");
+}
+function renderExtractResponse(response) {
+  const clip = (value) => value.length > MAX_DOC_BODY_CHARS ? `${value.slice(0, MAX_DOC_BODY_CHARS)}
+\u2026\uFF08\u5DF2\u622A\u65AD\uFF09` : value;
+  const succeeded = response.items.filter((item) => item.status === "success");
+  const failed = response.items.filter((item) => item.status === "failed");
+  const lines = [
+    `\u63D0\u53D6\u72B6\u6001\uFF1A${response.status}\uFF08\u6210\u529F ${succeeded.length} / \u5931\u8D25 ${failed.length}\uFF09`,
+    ""
+  ];
+  for (const item of succeeded) {
+    const bodyText = clip(item.document?.markdown ?? item.document?.text ?? "");
+    lines.push(`## ${item.document?.title ?? item.url}`);
+    lines.push(`URL: ${item.url}`);
+    lines.push("");
+    lines.push(bodyText || "\uFF08\u65E0\u6B63\u6587\uFF09");
+    lines.push("");
+  }
+  if (failed.length > 0) {
+    lines.push("### \u5931\u8D25");
+    for (const item of failed) {
+      lines.push(`- ${item.url} \u2192 ${item.error?.code ?? "CONTENT_UNAVAILABLE"}`);
+    }
+  }
+  return lines.join("\n");
+}
+function renderStatus(status) {
+  const lines = [
+    `Aylens Gateway\uFF1Ahealth=${status.health.status} \xB7 ready=${status.ready.status} \xB7 \u5728\u7EBF Runner=${status.ready.runtimes}`
+  ];
+  if (status.ready.runtimes === 0) {
+    lines.push(
+      "",
+      "\u26A0\uFE0F \u6CA1\u6709\u4EFB\u4F55\u5728\u7EBF Runner\uFF1A\u6B64\u65F6 /v1/search \u4F1A\u62A5\u300C\u65E0\u53EF\u7528\u6267\u884C\u8282\u70B9\u300D\uFF0C\u8FD9\u662F\u8BBE\u8BA1\u5982\u6B64\uFF08Gateway \u4E0D\u505A\u4EFB\u4F55\u6293\u53D6\uFF0C\u6CA1\u6709\u672C\u5730\u56DE\u9000\uFF09\u3002"
+    );
+  }
+  return lines.join("\n");
+}
+function isSchedulable(runtime) {
+  return runtime.status === "online" || runtime.status === "degraded";
+}
+function formatProviderOperations(runtime) {
+  const entries = Object.entries(runtime.capabilities.providerOperations ?? {});
+  if (entries.length === 0) {
+    return "- Provider \u80FD\u529B: \u672A\u4E0A\u62A5\uFF08\u8BE5 Runner \u7248\u672C\u8F83\u65E7\uFF0C\u6216\u6CA1\u6709\u5DF2\u52A0\u8F7D\u5B9E\u73B0\u7684 Provider\uFF09";
+  }
+  return `- Provider \u80FD\u529B: ${entries.map(([id, operations]) => `${id}=${operations.join(",") || "\u65E0"}`).join(" \xB7 ")}`;
+}
+function renderRuntimes(runtimes) {
+  if (runtimes.length === 0) {
+    return "\u5F53\u524D\u6CA1\u6709\u4EFB\u4F55 Runner \u6CE8\u518C\u5230\u8BE5 Gateway\u3002";
+  }
+  const lines = [`\u5171 ${runtimes.length} \u4E2A Runner\uFF1A`];
+  for (const runtime of runtimes) {
+    lines.push(
+      "",
+      `### ${runtime.id}`,
+      `- \u4E3B\u673A: ${runtime.hostname} \xB7 os=${runtime.os} \xB7 \u7248\u672C=${runtime.version} \xB7 \u534F\u8BAE=${runtime.protocolVersion}`,
+      `- \u72B6\u6001: ${runtime.status} \xB7 \u6700\u540E\u5FC3\u8DF3: ${formatAge(runtime.lastSeenAt)}`,
+      `- \u5BB9\u91CF: ${runtime.capacity.activeJobs}/${runtime.capacity.maxJobs}`,
+      `- Provider \u7C7B\u578B: ${runtime.capabilities.providerTypes.join(", ") || "\uFF08\u65E0\uFF09"}`,
+      `- Provider \u5B9E\u4F8B: ${runtime.capabilities.providerIds.join(", ") || "\uFF08\u65E0\uFF09"}`,
+      formatProviderOperations(runtime),
+      `- \u6D4F\u89C8\u5668: ${runtime.capabilities.browsers.join(", ") || "\uFF08\u65E0\uFF09"} \xB7 \u81EA\u52A8\u5316=${runtime.capabilities.browserAutomation} \xB7 HTTP=${runtime.capabilities.http}`,
+      `- Profile: ${runtime.capabilities.profiles.join(", ") || "\uFF08\u65E0\uFF09"} \xB7 \u4EE3\u7406\u914D\u7F6E\u901A\u9053=${runtime.capabilities.proxyConfig === true}`
+    );
+    const labels = Object.entries(runtime.labels);
+    if (labels.length > 0) {
+      lines.push(`- \u6807\u7B7E: ${labels.map(([k, v]) => `${k}=${v}`).join(", ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+function renderProviders(input) {
+  if (input.providers.length === 0) {
+    return "\u8BE5 Gateway \u672A\u914D\u7F6E\u4EFB\u4F55 Provider\u3002";
+  }
+  const schedulable = input.runtimes.filter(isSchedulable);
+  const declaredBy = /* @__PURE__ */ new Map();
+  let legacyRunnerCount = 0;
+  for (const runtime of schedulable) {
+    const reported = runtime.capabilities.providerOperations;
+    if (!reported || Object.keys(reported).length === 0) {
+      legacyRunnerCount += 1;
+      continue;
+    }
+    for (const [providerId, operations] of Object.entries(reported)) {
+      const claims = declaredBy.get(providerId) ?? [];
+      claims.push({ runtimeId: runtime.id, operations });
+      declaredBy.set(providerId, claims);
+    }
+  }
+  const lines = [`\u5171 ${input.providers.length} \u4E2A Provider\uFF1A`];
+  for (const provider of input.providers) {
+    lines.push(
+      `- ${provider.id} \xB7 type=${provider.type} \xB7 enabled=${provider.enabled} \xB7 runtime=${JSON.stringify(provider.runtime)}`
+    );
+    const claims = declaredBy.get(provider.id);
+    if (claims && claims.length > 0) {
+      lines.push(
+        `  - \u53EF\u7528\u64CD\u4F5C: ${claims.map((claim) => `${claim.operations.join(",") || "\u65E0"}@${claim.runtimeId}`).join(" \xB7 ")}`
+      );
+    } else if (schedulable.length === 0) {
+      lines.push("  - \u53EF\u7528\u64CD\u4F5C: \u672A\u77E5\uFF08\u5F53\u524D\u6CA1\u6709\u5728\u7EBF Runner\uFF09");
+    } else {
+      lines.push("  - \u53EF\u7528\u64CD\u4F5C: \u672A\u4E0A\u62A5\uFF08\u5728\u7EBF Runner \u6CA1\u6709\u58F0\u660E\u8FD9\u4E2A Provider\uFF09");
+    }
+  }
+  const caveats = [];
+  if (legacyRunnerCount > 0) {
+    caveats.push(
+      `\u6709 ${legacyRunnerCount} \u4E2A\u5728\u7EBF Runner \u672A\u4E0A\u62A5 Provider \u80FD\u529B\uFF08\u65E7\u7248\u672C\uFF09\uFF1A\u5B83\u4EEC\u7684 Provider \u4F1A\u663E\u793A\u4E3A\u300C\u672A\u4E0A\u62A5\u300D\uFF0C\u5B9E\u9645\u53EF\u80FD\u4ECD\u652F\u6301 search\u3002`
+    );
+  }
+  if (schedulable.length === 0) {
+    caveats.push("\u5F53\u524D\u6CA1\u6709\u5728\u7EBF Runner\uFF0C\u4EFB\u4F55\u68C0\u7D22\u90FD\u4F1A\u62A5\u300C\u65E0\u53EF\u7528\u6267\u884C\u8282\u70B9\u300D\u3002");
+  }
+  lines.push(
+    "",
+    "\u8C03\u7528 Search \u65F6\u53EF\u7528 sources \u663E\u5F0F\u6307\u5B9A\u4E0A\u8FF0 id\uFF08\u5982 sources=tavily \u6216 sources=tavily,exa\uFF09\uFF0C\u6216\u6539\u7528 route \u8DEF\u7531\u540D\u3002",
+    "Extract **\u53EA\u6709\u58F0\u660E\u4E86 extract \u7684 Provider \u53EF\u7528**\uFF1B`url-fetch` \u4E0E `x` \u4E0D\u63D0\u4F9B\u8BE5\u80FD\u529B\u3002",
+    ...caveats
+  );
+  return lines.join("\n");
+}
+function renderProviderAuth(response) {
+  const { auth } = response;
+  const lines = [`Provider ${response.providerId} \xB7 runtime=${response.runtimeId} \xB7 \u767B\u5F55\u6001=${auth.status}`];
+  if (auth.account) {
+    lines.push(
+      `- \u8D26\u53F7: ${auth.account.handle}${auth.account.displayName ? `\uFF08${auth.account.displayName}\uFF09` : ""}`
+    );
+  }
+  if (auth.checkedAt) {
+    lines.push(`- \u68C0\u67E5\u65F6\u95F4: ${new Date(auth.checkedAt).toISOString()}\uFF08${formatAge(auth.checkedAt)}\uFF09`);
+  }
+  if (auth.status === "auth_required") {
+    lines.push(
+      "",
+      "\u26A0\uFE0F \u9700\u8981\u4EBA\u5DE5\u767B\u5F55\uFF1A\u8BF7\u5728 Aylens Admin\uFF08/admin/providers\uFF09\u70B9\u300C\u767B\u5F55\u300D\uFF0C\u5728\u5F39\u51FA\u7684 Chrome \u91CC\u5B8C\u6210\u767B\u5F55\u4E0E 2FA\u3002",
+      "\u51ED\u636E\u53EA\u7559\u5728 Runner \u7684 persistent Profile \u4E2D\uFF0CGateway \u4E0D\u63A5\u89E6 Cookie\u3002"
+    );
+  }
+  return lines.join("\n");
+}
+function renderOverview(overview, recentAuditLimit) {
+  const { summary } = overview;
+  const lines = [
+    `Aylens \u603B\u89C8 \xB7 gateway=${overview.gateway.status} \xB7 \u751F\u6210\u4E8E ${formatAge(overview.generatedAt)}`,
+    `- Provider: ${summary.enabledProviders}/${summary.providers} \u542F\u7528`,
+    `- Runner: ${summary.onlineRuntimes}/${summary.runtimes} \u5728\u7EBF`,
+    `- \u6D4F\u89C8\u5668 Profile: ${summary.browserProfiles}`,
+    `- \u8FD1\u671F\u5BA1\u8BA1: ${summary.recentAudits} \u6761`
+  ];
+  if (overview.providers.length > 0) {
+    lines.push("", "## Providers");
+    for (const provider of overview.providers) {
+      const auth = provider.auth ? ` \xB7 \u767B\u5F55\u6001=${provider.auth.status}${provider.auth.account ? `\uFF08${provider.auth.account.handle}\uFF09` : ""}` : provider.authControl ? " \xB7 \u767B\u5F55\u6001=\u672A\u77E5" : "";
+      lines.push(`- ${provider.id} \xB7 type=${provider.type} \xB7 enabled=${provider.enabled}${auth}`);
+    }
+  }
+  if (overview.runtimes.length > 0) {
+    lines.push("", "## Runtimes");
+    for (const runtime of overview.runtimes) {
+      lines.push(`- ${runtime.id} \xB7 ${runtime.status}${runtime.hostname ? ` \xB7 ${runtime.hostname}` : ""}`);
+    }
+  }
+  if (overview.browserProfiles.length > 0) {
+    lines.push("", "## Browser Profiles");
+    for (const profile of overview.browserProfiles) {
+      lines.push(
+        `- ${profile.id} \xB7 runtime=${profile.runtimeId} \xB7 ${profile.status}${profile.activeLeases !== void 0 && profile.maxConcurrency !== void 0 ? ` \xB7 \u79DF\u7EA6 ${profile.activeLeases}/${profile.maxConcurrency}` : ""}`
+      );
+    }
+  }
+  const audits = overview.audits.slice(
+    0,
+    recentAuditLimit !== void 0 && recentAuditLimit > 0 ? recentAuditLimit : overview.audits.length
+  );
+  if (audits.length > 0) {
+    lines.push("", "## \u6700\u8FD1\u5BA1\u8BA1");
+    for (const record of audits) {
+      lines.push(
+        `- ${record.requestId} \xB7 ${record.status} \xB7 ${formatAge(record.createdAt)} \xB7 query=${record.request.query.slice(0, 60)}${record.providers.some((event) => event.status === "failed") ? " \xB7 \u26A0\uFE0F \u6709 Provider \u5931\u8D25" : ""}`
+      );
+    }
+    lines.push("", "\u7528 GetAudit + requestId \u67E5\u770B\u5355\u6B21\u68C0\u7D22\u7684\u5B8C\u6574 Provider \u4E8B\u4EF6\u3002");
+  }
+  if (summary.onlineRuntimes === 0) {
+    lines.push(
+      "",
+      "\u26A0\uFE0F \u6CA1\u6709\u5728\u7EBF Runner\uFF1A\u6B64\u65F6\u4EFB\u4F55 Search \u90FD\u4F1A\u62A5\u300C\u65E0\u53EF\u7528\u6267\u884C\u8282\u70B9\u300D\uFF08Gateway \u4E0D\u505A\u672C\u5730\u56DE\u9000\uFF09\u3002"
+    );
+  }
+  const needLogin = overview.providers.filter((provider) => provider.auth?.status === "auth_required").map((provider) => provider.id);
+  if (needLogin.length > 0) {
+    lines.push(
+      "",
+      `\u26A0\uFE0F \u4EE5\u4E0B Provider \u9700\u8981\u4EBA\u5DE5\u767B\u5F55\uFF1A${needLogin.join(", ")}\u3002`,
+      "\u8BF7\u5230 Aylens Admin \u7684 /admin/providers \u70B9\u300C\u767B\u5F55\u300D\uFF1B\u767B\u5F55\u6001\u53EA\u7559\u5728 Runner \u7684 persistent Profile \u91CC\u3002"
+    );
+  }
+  return lines.join("\n");
+}
+function renderAudit(record) {
+  const lines = [
+    `\u5BA1\u8BA1 ${record.requestId} \xB7 status=${record.status}`,
+    `- traceId: ${record.traceId}`,
+    `- query: ${record.request.query}`
+  ];
+  if (record.request.sources?.length) lines.push(`- sources: ${record.request.sources.join(", ")}`);
+  if (record.request.route) lines.push(`- route: ${record.request.route}`);
+  if (record.request.limit !== void 0) lines.push(`- limit: ${record.request.limit}`);
+  lines.push(`- \u5F00\u59CB: ${new Date(record.createdAt).toISOString()}\uFF08${formatAge(record.createdAt)}\uFF09`);
+  if (record.completedAt !== void 0) {
+    lines.push(
+      `- \u5B8C\u6210: ${new Date(record.completedAt).toISOString()} \xB7 \u8017\u65F6 ${record.completedAt - record.createdAt}ms`
+    );
+  }
+  if (record.providers.length === 0) {
+    lines.push("- Provider \u4E8B\u4EF6: \uFF08\u65E0\u2014\u2014\u901A\u5E38\u610F\u5473\u7740\u5728\u6D3E\u53D1\u524D\u5C31\u5931\u8D25\u4E86\uFF09");
+  } else {
+    lines.push("- Provider \u4E8B\u4EF6:");
+    for (const event of record.providers) {
+      lines.push(
+        `  - ${event.providerId}\uFF1A${event.status} \xB7 ${event.resultCount} \u6761 \xB7 ${event.completedAt - event.startedAt}ms${event.runtimeId ? ` \xB7 runtime=${event.runtimeId}` : ""}${event.errorCode ? ` \xB7 ${event.errorCode}` : ""}`
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+// src/canonical.ts
+function canonical(value) {
+  return value;
+}
+
+// src/tools/extract.ts
+var DESCRIPTION = "\u5BF9\u663E\u5F0F URL \u5217\u8868\u63D0\u53D6\u6B63\u6587\uFF08\u4E0E aylens_search \u662F\u4E24\u4E2A\u72EC\u7ACB\u80FD\u529B\uFF09\uFF0C\u8FD4\u56DE\u9010\u6761\u6210\u529F/\u5931\u8D25\u72B6\u6001\u3002" + EXTRACT_FACTS_TEXT;
+function buildExtractTool(client) {
+  return defineTool({
+    name: "aylens_extract",
+    description: DESCRIPTION,
+    parameters: {
+      urls: {
+        type: "array",
+        items: { type: "string" },
+        required: true,
+        description: "\u8981\u63D0\u53D6\u7684 HTTP(S) \u5730\u5740\u5217\u8868\u3002"
+      },
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        required: true,
+        description: '\u63D0\u53D6\u6765\u6E90\uFF0C\u4F8B\u5982 ["tavily"]\uFF1B\u5FC5\u586B\uFF0C\u4E0D\u4F1A\u9ED8\u8BA4\u8C03\u7528\u6240\u6709\u670D\u52A1\u3002'
+      },
+      content: {
+        type: "string",
+        enum: ["markdown", "text"],
+        description: "\u6B63\u6587\u683C\u5F0F\u504F\u597D\uFF1B\u6CE8\u610F exa \u53EA\u80FD\u7ED9\u7EAF\u6587\u672C\u3002"
+      },
+      limit: { type: "number", description: "\u671F\u671B\u8FD4\u56DE\u6761\u6570\uFF0C1-100\u3002" }
+    },
+    output: {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          requestId: { type: "string", required: true },
+          status: { type: "string", required: true },
+          items: {
+            type: "array",
+            required: true,
+            items: { type: "object", additionalProperties: true }
+          },
+          succeeded: { type: "number", required: true },
+          failed: { type: "number", required: true }
+        }
+      },
+      render: (_args, value) => [{ type: "text", text: renderExtractResponse(value) }],
+      presentationMeta: (args, value) => {
+        const items = value.items;
+        const urls = args.urls;
+        const only = items[0];
+        if (urls.length !== 1 || only === void 0 || only.status !== "success") {
+          return { kind: "list" };
+        }
+        return {
+          kind: "fetch",
+          url: only.url,
+          statusCode: 200,
+          truncated: isExtractBodyTruncated([only.document ?? {}])
+        };
+      }
+    },
+    presentCall: (args) => ({
+      card: "generic",
+      title: `Aylens \u63D0\u53D6 ${(args.urls ?? []).length} \u4E2A URL`
+    }),
+    presentResult: (args, result) => {
+      const meta = result.meta;
+      if (meta?.kind === "fetch" && typeof meta.url === "string") {
+        return {
+          card: "web",
+          kind: "fetch",
+          url: meta.url,
+          statusCode: meta.statusCode ?? 200,
+          truncated: meta.truncated === true
+        };
+      }
+      return {
+        card: "generic",
+        title: `Aylens \u63D0\u53D6 ${(args.urls ?? []).length} \u4E2A URL`
+      };
+    },
+    async execute(args, exec) {
+      assertConfigured(client.config);
+      const response = await extract(
+        client,
+        {
+          urls: args.urls,
+          sources: args.sources,
+          ...args.content === void 0 ? {} : { content: args.content },
+          ...args.limit === void 0 ? {} : { limit: args.limit }
+        },
+        exec.signal
+      );
+      return {
+        requestId: response.requestId,
+        status: response.status,
+        items: response.items.map((item) => canonical(item)),
+        succeeded: response.items.filter((item) => item.status === "success").length,
+        failed: response.items.filter((item) => item.status === "failed").length
+      };
+    }
+  });
+}
+
+// src/tools/inspect.ts
+import { defineTool as defineTool2 } from "@deepseek-ai/dsh-tools";
+var SCOPES = ["gateway", "overview", "runtimes", "providers", "provider-auth", "audit"];
+var DESCRIPTION2 = "\u67E5\u770B Aylens Gateway \u7684\u8BCA\u65AD\u4FE1\u606F\uFF0C\u6392\u67E5\u300C\u68C0\u7D22\u4E0D\u597D\u7528\u300D\u65F6\u5148\u770B overview\u3002scope \u53D6\u503C\u4E0E\u7528\u9014\uFF1Agateway = Gateway \u5065\u5EB7\u4E0E\u5728\u7EBF Runner \u6570\uFF1Boverview = \u603B\u89C8\uFF08Provider \u767B\u5F55\u6001\u3001Runner\u3001\u6D4F\u89C8\u5668 Profile\u3001\u6700\u8FD1\u5BA1\u8BA1\uFF09\uFF1Bruntimes = \u5DF2\u8FDE\u63A5 Runner \u7684\u80FD\u529B\u4E0E\u5BB9\u91CF\uFF1Bproviders = Provider \u6E05\u5355\u4E0E\u5404\u81EA**\u771F\u5B9E\u53EF\u7528\u64CD\u4F5C**\uFF08\u51B3\u5B9A aylens_search / aylens_extract \u80FD\u7528\u54EA\u4E9B sources\uFF09\uFF1Bprovider-auth = \u68C0\u67E5\u67D0\u4E2A Provider \u7684\u4EBA\u5DE5\u767B\u5F55\u6001\uFF08\u65E0\u526F\u4F5C\u7528\uFF0C\u9700 providerId\uFF09\uFF1Baudit = \u6309 requestId \u770B\u5355\u6B21\u68C0\u7D22\u7684\u5BA1\u8BA1\u660E\u7EC6\uFF08\u9700 requestId\uFF09\u3002\u6CE8\u610F\uFF1A\u6CA1\u6709\u4EFB\u4F55\u5728\u7EBF Runner \u65F6\u68C0\u7D22\u4F1A\u62A5 NO_RUNTIME\uFF0C\u8FD9\u610F\u5473\u7740\u6267\u884C\u9762\u7F3A\u5931\uFF0C**\u4E0D\u662F\u67E5\u65E0\u7ED3\u679C**\u3002";
+function buildInspectTool(client) {
+  return defineTool2({
+    name: "aylens_inspect",
+    description: DESCRIPTION2,
+    parameters: {
+      scope: {
+        type: "string",
+        enum: [...SCOPES],
+        required: true,
+        description: "\u8981\u67E5\u770B\u7684\u8BCA\u65AD\u9762\u3002"
+      },
+      providerId: {
+        type: "string",
+        description: 'scope="provider-auth" \u65F6\u5FC5\u586B\uFF1B\u53D6\u503C\u6765\u81EA scope="providers" \u8FD4\u56DE\u7684 Provider id\u3002'
+      },
+      requestId: {
+        type: "string",
+        description: 'scope="audit" \u65F6\u5FC5\u586B\uFF1B\u6765\u81EA aylens_search \u7684\u8FD4\u56DE\u503C\u6216 scope="overview" \u7684\u8FD1\u671F\u5BA1\u8BA1\u5217\u8868\u3002'
+      },
+      recentAuditLimit: {
+        type: "number",
+        description: 'scope="overview" \u65F6\u9650\u5236\u5217\u51FA\u7684\u8FD1\u671F\u5BA1\u8BA1\u6761\u6570\u3002'
+      }
+    },
+    output: {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          scope: { type: "string", required: true },
+          // 渲染文本给模型读；data 保留结构化原值，供后续工具或 Code Mode 程序化消费。
+          text: { type: "string", required: true },
+          data: { type: "object", required: true, additionalProperties: true }
+        }
+      },
+      render: (_args, value) => [{ type: "text", text: value.text }]
+    },
+    presentCall: (args) => ({
+      card: "generic",
+      title: `Aylens \u8BCA\u65AD\uFF1A${args.scope}`
+    }),
+    async execute(args, exec) {
+      assertConfigured(client.config);
+      const scope = args.scope;
+      if (scope === "provider-auth" && !args.providerId) {
+        throw new Error(
+          'scope="provider-auth" \u5FC5\u987B\u4F20 providerId\uFF0C\u53D6\u503C\u6765\u81EA aylens_inspect(scope="providers") \u8FD4\u56DE\u7684 Provider id\u3002'
+        );
+      }
+      if (scope === "audit" && !args.requestId) {
+        throw new Error(
+          'scope="audit" \u5FC5\u987B\u4F20 requestId\uFF0C\u53D6\u503C\u6765\u81EA aylens_search \u8FD4\u56DE\u7684 requestId\uFF0C\u6216 aylens_inspect(scope="overview") \u7684\u8FD1\u671F\u5BA1\u8BA1\u5217\u8868\u3002'
+        );
+      }
+      switch (scope) {
+        case "gateway": {
+          const data = await getStatus(client, exec.signal);
+          return { scope, text: renderStatus(data), data: canonical(data) };
+        }
+        case "overview": {
+          const data = await getOverview(client, exec.signal);
+          return {
+            scope,
+            text: renderOverview(data, args.recentAuditLimit),
+            data: canonical(data)
+          };
+        }
+        case "runtimes": {
+          const data = await listRuntimes(client, exec.signal);
+          return { scope, text: renderRuntimes(data.runtimes), data: canonical(data) };
+        }
+        case "providers": {
+          const data = await listProviders(client, exec.signal);
+          return { scope, text: renderProviders(data), data: canonical(data) };
+        }
+        case "provider-auth": {
+          const data = await checkProviderAuth(
+            client,
+            { providerId: args.providerId },
+            exec.signal
+          );
+          return { scope, text: renderProviderAuth(data), data: canonical(data) };
+        }
+        default: {
+          const data = await getAudit(client, { requestId: args.requestId }, exec.signal);
+          return { scope, text: renderAudit(data), data: canonical(data) };
+        }
+      }
+    }
+  });
+}
+
+// src/tools/login.ts
+import { defineTool as defineTool3 } from "@deepseek-ai/dsh-tools";
+var DESCRIPTION3 = "\u5728 Runner \u4E0A\u62C9\u8D77\u4E00\u4E2A\u3010\u53EF\u89C1\u7684 Chrome\u3011\u5E76\u6253\u5F00\u8BE5 Provider \u7684\u767B\u5F55\u9875\u3002\u3010\u5F3A\u526F\u4F5C\u7528\u3011\u4F1A\u6253\u65AD\u76EE\u6807\u673A\u5668\u4E0A\u6B63\u5728\u590D\u7528\u540C\u4E00\u6D4F\u89C8\u5668 Profile \u7684\u8FDB\u884C\u4E2D\u4EFB\u52A1\uFF0C\u4E14\u3010\u4E0D\u7B49\u5F85\u767B\u5F55\u5B8C\u6210\u3011\u2014\u2014\u8FD4\u56DE\u53EA\u8868\u793A\u767B\u5F55\u7A97\u53E3\u5DF2\u6253\u5F00\uFF0C\u9700\u8981\u4EBA\u5DE5\u5728\u76EE\u6807\u673A\u5668\u4E0A\u5B8C\u6210\u767B\u5F55\u4E0E 2FA\u3002\u9ED8\u8BA4\u5173\u95ED\uFF1A\u5FC5\u987B\u5148\u628A\u672C\u63D2\u4EF6 config \u6BB5\u7684 allowAuthLogin \u8BBE\u4E3A true \u624D\u53EF\u7528\u3002confirm \u5FC5\u987B\u4E0E providerId \u5B8C\u5168\u76F8\u540C\uFF0C\u4F5C\u4E3A\u4E8C\u6B21\u786E\u8BA4\u3002";
+function buildLoginTool(client) {
+  return defineTool3({
+    name: "aylens_login",
+    description: DESCRIPTION3,
+    parameters: {
+      providerId: { type: "string", required: true, description: "\u76EE\u6807 Provider \u5B9E\u4F8B id\u3002" },
+      confirm: {
+        type: "string",
+        required: true,
+        description: "\u5FC5\u987B\u4E0E providerId \u5B8C\u5168\u76F8\u540C\uFF0C\u4F5C\u4E3A\u4E8C\u6B21\u786E\u8BA4\u3002"
+      }
+    },
+    output: {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          providerId: { type: "string", required: true },
+          runtimeId: { type: "string", required: true },
+          launched: { type: "boolean", required: true },
+          text: { type: "string", required: true }
+        }
+      },
+      render: (_args, value) => [{ type: "text", text: value.text }]
+    },
+    presentCall: (args) => ({
+      card: "generic",
+      title: `\u5728 Runner \u4E0A\u6253\u5F00 ${args.providerId} \u7684\u767B\u5F55\u9875`
+    }),
+    async execute(args, exec) {
+      assertConfigured(client.config);
+      const response = await loginProviderAuth(
+        client,
+        { providerId: args.providerId, confirm: args.confirm },
+        exec.signal
+      );
+      return {
+        providerId: args.providerId,
+        runtimeId: response.runtimeId,
+        launched: true,
+        text: [
+          `\u5DF2\u5728 Runner\uFF08runtime=${response.runtimeId}\uFF09\u4E0A\u542F\u52A8\u767B\u5F55\u6D41\u7A0B\u3002`,
+          renderProviderAuth(response),
+          "",
+          "\u767B\u5F55\u7A97\u53E3\u7531 Runner \u4FA7\u7684 Chrome \u627F\u8F7D\uFF0C\u8BF7\u5728\u76EE\u6807\u673A\u5668\u4E0A\u5B8C\u6210\u64CD\u4F5C\uFF1B\u672C\u5DE5\u5177\u4E0D\u4F1A\u7B49\u5F85\u767B\u5F55\u5B8C\u6210\u3002"
+        ].join("\n")
+      };
+    }
+  });
+}
+
+// src/tools/search.ts
+import { defineTool as defineTool4 } from "@deepseek-ai/dsh-tools";
+var DESCRIPTION4 = "\u901A\u8FC7 Aylens Gateway \u6267\u884C\u7EDF\u4E00\u4E92\u8054\u7F51\u68C0\u7D22\uFF0C\u8FD4\u56DE\u6807\u9898\u3001URL\u3001\u6765\u6E90\u4E0E\u6B63\u6587\u3002\u5F53 DSH \u5185\u7F6E\u7684 web_search \u8986\u76D6\u4E0D\u5230\u4E0B\u5217\u573A\u666F\u65F6\u4F18\u5148\u7528\u672C\u5DE5\u5177\uFF1A\u9700\u8981\u767B\u5F55\u6001\u7684\u7AD9\u70B9\u68C0\u7D22\uFF08\u5982 X\uFF0C\u5185\u7F6E\u68C0\u7D22\u53EA\u80FD\u62FF\u5230\u516C\u5F00\u9875\u9762\uFF09\uFF1B\u5DF2\u77E5 URL \u4E14\u9700\u8981\u6D4F\u89C8\u5668\u515C\u5E95\u6293\u53D6\uFF08\u542B\u767B\u5F55\u6001\u3001\u9700\u8981\u6E32\u67D3\u7684\u9875\u9762\uFF09\uFF1B\u9700\u8981 Tavily / Exa / AnySearch \u591A\u6E90\u6C47\u96C6\u6216 API Key \u6C60\u8C03\u5EA6\u3002\u7EAF\u516C\u5F00\u7F51\u9875\u7684\u666E\u901A\u67E5\u8D44\u6599\u7528\u5185\u7F6E web_search \u66F4\u5FEB\u3002" + SEARCH_FACTS_TEXT;
+function buildSearchTool(client) {
+  return defineTool4({
+    name: "aylens_search",
+    description: DESCRIPTION4,
+    parameters: {
+      query: {
+        type: "string",
+        required: true,
+        description: "\u68C0\u7D22\u5F0F\uFF1B\u8BED\u4E49\u968F sources \u6307\u5B9A\u7684\u6E20\u9053\u53D8\u5316\uFF08URL / X \u68C0\u7D22\u5F0F / \u81EA\u7136\u8BED\u8A00\uFF09\u3002"
+      },
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        description: 'Provider \u5B9E\u4F8B id \u5217\u8868\uFF0C\u4F8B\u5982 ["tavily"] \u6216 ["tavily","exa"]\uFF1B\u4E0D\u586B\u8D70\u9ED8\u8BA4\u8DEF\u7531\u3002'
+      },
+      route: { type: "string", description: "Gateway \u8DEF\u7531\u540D\uFF0C\u66FF\u4EE3 sources\u3002" },
+      limit: { type: "number", description: "\u671F\u671B\u6761\u6570\uFF0C1-100\u3002" },
+      language: { type: "string", description: "\u8BED\u8A00\u504F\u597D\u3002" }
+    },
+    output: {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          requestId: { type: "string", required: true },
+          status: { type: "string", required: true },
+          items: {
+            type: "array",
+            required: true,
+            items: { type: "object", additionalProperties: true }
+          },
+          providers: {
+            type: "array",
+            required: true,
+            items: { type: "object", additionalProperties: true }
+          }
+        }
+      },
+      render: (_args, value) => [{ type: "text", text: renderSearchResponse(value) }],
+      // 结构化 sources 是渲染文本装不下的部分：经这里持久化，再由 presentResult 读回给 UI 画引用卡。
+      presentationMeta: (_args, value) => {
+        const response = value;
+        const items = response.items ?? [];
+        return {
+          sources: items.map((item) => ({
+            url: item.canonicalUrl ?? item.url,
+            ...item.title === void 0 ? {} : { title: item.title },
+            ...item.snippet === void 0 ? {} : { snippet: item.snippet },
+            ...item.publishedAt === void 0 ? {} : { publishedAt: item.publishedAt }
+          })),
+          // 如实上报：判定与渲染器同源（都在 bridge-core 的 render.ts），
+          // 绝不能写死 false——否则正文被砍掉一半，卡片还说没截断。
+          truncated: isSearchBodyTruncated(items)
+        };
+      }
+    },
+    presentCall: (args) => ({
+      card: "generic",
+      title: `Aylens \u68C0\u7D22\uFF1A${args.query}`
+    }),
+    presentResult: (args, result) => {
+      const meta = result.meta;
+      return {
+        card: "web",
+        kind: "search",
+        title: `Aylens \u68C0\u7D22\uFF1A${args.query}`,
+        sources: meta?.sources ?? [],
+        truncated: meta?.truncated === true
+      };
+    },
+    async execute(args, exec) {
+      assertConfigured(client.config);
+      const response = await search(
+        client,
+        {
+          query: args.query,
+          ...args.sources === void 0 ? {} : { sources: args.sources },
+          ...args.route === void 0 ? {} : { route: args.route },
+          ...args.limit === void 0 ? {} : { limit: args.limit },
+          ...args.language === void 0 ? {} : { language: args.language }
+        },
+        exec.signal
+      );
+      return {
+        requestId: response.requestId,
+        status: response.status,
+        items: response.items.map((item) => canonical(item)),
+        providers: Object.entries(response.meta?.providers ?? {}).map(
+          ([id, meta]) => canonical({ id, ...meta })
+        )
+      };
+    }
+  });
+}
+
+// src/index.ts
+var name = "aylens-dsh";
+var inject = ["tools"];
+function buildTools(config) {
+  const client = new AylensClient(config);
+  return [
+    buildSearchTool(client),
+    buildExtractTool(client),
+    buildInspectTool(client),
+    buildLoginTool(client)
+  ];
+}
+function apply(ctx, raw = {}) {
+  for (const definition of buildTools(resolveConfig(raw))) {
+    ctx.tools.register(definition);
+  }
+}
+export {
+  apply,
+  buildTools,
+  inject,
+  name
+};

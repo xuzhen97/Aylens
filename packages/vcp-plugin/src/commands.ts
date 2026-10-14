@@ -1,4 +1,5 @@
 import type { AylensClient } from "./client.js";
+import { EXTRACT_FACTS_TEXT, SEARCH_FACTS_TEXT } from "../../bridge-core/src/index.js";
 import { handleGetAudit, handleGetOverview } from "./handlers/admin.js";
 import { handleCheckProviderAuth, handleLoginProviderAuth } from "./handlers/providers.js";
 import { handleExtract } from "./handlers/extract.js";
@@ -39,17 +40,8 @@ export const COMMANDS: CommandDefinition[] = [
 		description:
 			"功能: 通过 Aylens Gateway 执行统一互联网检索，返回标题、URL、来源与正文。\n" +
 			"`command` 固定为 `Search`，不得填写 URL、路径或自然语言。\n" +
-			"`query` 的语义**随渠道变化**，不要混用：\n" +
-			"  · `url-fetch`：`query` 直接写要抓取的 URL；\n" +
-			"  · `x-search`：`query` 写 X 原生检索式（如 \"OpenAI\" lang:en）；\n" +
-			"  · `tavily` / `exa` / `anysearch`：`query` 写自然语言检索式（如 Go 1.26 release notes），\n" +
-			"    这三家是 API 型检索渠道，适合「找资料」；`url-fetch` 适合「已知 URL 取正文」。\n" +
-			"  它们自己就能返回正文（tavily 可返回 Markdown、anysearch 可返回 Markdown、exa 为纯文本），\n" +
-			"  因此拿到这批渠道的结果后**不需要**再对同一批 URL 调一次 `Extract`。\n" +
-			"`sources` 可显式指定 Provider 实例（逗号分隔，例如 `tavily` 或 `tavily,exa`），\n" +
-			"`route` 可指定 Gateway 路由名（`tavily` / `exa` / `anysearch` 均有同名路由），二者都不填则走默认路由。\n" +
-			"API 渠道默认可能是停止状态；先用 `ListProviders` 确认 enabled 与可用操作再发起检索。\n" +
-			"`limit` 为期望条数（1-100，注意 anysearch 上游最多 10 条、会在结果里标注被截断），`language` 为语言偏好。",
+			"确认渠道状态用 `ListProviders`。\n" +
+			SEARCH_FACTS_TEXT,
 		exampleParams: [
 			{ key: "query", value: "Go 1.26 release notes" },
 			{ key: "sources", value: "tavily" },
@@ -64,10 +56,7 @@ export const COMMANDS: CommandDefinition[] = [
 			"`command` 固定为 `Extract`，不得填写 URL、路径或自然语言。\n" +
 			"`urls` 是要提取的 HTTP(S) 地址列表（逗号或换行分隔）。\n" +
 			"`sources` 必填，指定提取来源（如 `tavily`）；不会默认调用所有提取服务，也不复用 Search 的默认路由。\n" +
-			"**只有 `tavily` / `exa` / `anysearch` 提供这一能力**（`url-fetch` 与 `x` 没有，填了会失败），\n" +
-			"三家的取舍：tavily 单次最多 20 个 URL、可给 Markdown；exa 单次最多 100 个 URL、正文**只有纯文本**；\n" +
-			"anysearch 上游**一次只接受 1 个 URL**（Aylens 会自动有界并发），URL 越多越慢，别拿它跑长列表。\n" +
-			"`limit` 为期望返回条数（1-100），`content` 控制正文格式（markdown 或 text）。",
+			EXTRACT_FACTS_TEXT,
 		exampleParams: [
 			{ key: "urls", value: "https://example.com/article" },
 			{ key: "sources", value: "tavily" },

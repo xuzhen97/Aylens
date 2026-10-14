@@ -25,6 +25,8 @@ Aylens 的 Gateway 已经通过 REST 对外提供检索、Provider / Runtime 状
 
 **两个传输面由契约测试绑定。** `src/api/mcp/tools.ts` 扩展为与插件相同的命令集（进程内实现，直接使用 `GatewayContext`），并由 `test/vcp-plugin-contract.test.ts` 双向校验：命令集一致（仅 PascalCase / snake_case 命名差异）、每个工具声明的参数与插件描述中记录的参数一一对应、插件读取的每个配置项都在 `manifest.configSchema` 中声明。不采用共享代码包，因为两者的执行体不同（一个是进程内、一个是远程 HTTP），共享的只有契约；引入第三方共享包会带来构建顺序耦合，而根仓库目前没有 TypeScript project references。
 
+**本决策的边界。** 上面这段「不采用共享代码包」只覆盖**MCP adapter 与插件**这一对，理由（执行体不同、可共享的只有契约）也只在这一对成立。**插件与插件之间**是另一回事：`packages/vcp-plugin` 与后续新增的 `packages/dsh-plugin` 都是远程 HTTP 客户端、执行体同构，共享的正是执行体本身。那一条决策见 `shared-bridge-core`，它引入 `packages/bridge-core` 作为两个宿主适配层共享的执行核心，并以**源码级共享**（消费方 `tsc --noEmit` + esbuild 内联）绕开本节顾虑的构建顺序耦合。读到本节时不要据此认为共享核心违规。
+
 ## Consequences
 
 - 新增一个命令的完整动作是：在 `commands.ts` 加一条 + 在 `src/api/mcp/tools.ts` 加同名工具 + `pnpm build:plugin`。漏掉任何一步都会被测试拦下。

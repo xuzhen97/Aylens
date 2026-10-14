@@ -4,7 +4,7 @@
       "name": "AylensBridge",
       "displayName": "Aylens 检索网关连接桥",
       "description": "连接 Aylens Gateway：统一互联网检索（url-fetch / x-search / tavily / exa / anysearch）、Gateway 与 Runner 状态、Provider 清单与真实可用操作。synchronous/stdio 架构，零 npm 依赖。",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": "xuzhen97",
       "category": "information-retrieval",
       "icon": "search",

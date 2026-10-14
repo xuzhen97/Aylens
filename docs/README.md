@@ -12,6 +12,7 @@
 | [providers.md](./providers.md) | ProviderFactory、Runner Plugin、url-fetch、如何添加新 Provider |
 | [api.md](./api.md) | 当前 REST API、鉴权、MCP adapter 状态 |
 | [vcp-plugin.md](./vcp-plugin.md) | VCPToolBox 插件 AylensBridge：命令、安装、配置、验收与排查 |
+| [dsh-plugin.md](./dsh-plugin.md) | DeepSeek Harness 插件 aylens-dsh：四个原生工具、安装、凭据、验收与排查 |
 | [admin-ui.md](./admin-ui.md) | 后台页面、主题、API Key、安全边界 |
 | [operations.md](./operations.md) | Gateway / Runner 启动、人工登录态验收、故障定位 |
 | [testing.md](./testing.md) | 测试矩阵、typecheck/build、集成测试、真实 Chrome smoke test |
@@ -43,5 +44,6 @@
 接入 AI Agent：
 
 1. [vcp-plugin.md](./vcp-plugin.md)
-2. [adr/2026-10-08-vcp-toolbox-plugin-bridge.md](./adr/2026-10-08-vcp-toolbox-plugin-bridge.md)
-3. [api.md](./api.md)
+2. [dsh-plugin.md](./dsh-plugin.md)
+3. [adr/2026-10-08-vcp-toolbox-plugin-bridge.md](./adr/2026-10-08-vcp-toolbox-plugin-bridge.md)
+4. [api.md](./api.md)

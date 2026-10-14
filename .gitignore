@@ -25,3 +25,6 @@ coverage/
 
 # Admin web workspace build artifacts
 apps/admin/dist/
+
+# 思源架构笔记取证导出（临时比对用，不入库）
+.siyuan-docs/

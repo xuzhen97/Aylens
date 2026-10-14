@@ -84,4 +84,20 @@ describe("AylensBridge manifest 契约", () => {
 		expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
 		expect(manifest.capabilities.invocationCommands.length).toBeGreaterThan(0);
 	});
+
+	it("三处版本号必须一致（根 plugins.json 才是 PluginStore 判断更新的依据）", () => {
+		const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8")) as {
+			version: string;
+		};
+		const rootIndex = JSON.parse(readFileSync(resolve(__dirname, "../../../plugins.json"), "utf8")) as {
+			plugins: Array<{ name: string; version: string }>;
+		};
+		const entry = rootIndex.plugins.find((item) => item.name === "AylensBridge");
+		expect(entry, "根 plugins.json 里缺少 AylensBridge 条目").toBeDefined();
+
+		// 描述变更不会触发商店提示更新——只有根 plugins.json 的版本号变了才会。
+		// 漏改任何一处，都会表现为「改了实现但用户永远收不到更新」。
+		expect(packageJson.version).toBe(manifest.version);
+		expect(entry?.version).toBe(manifest.version);
+	});
 });

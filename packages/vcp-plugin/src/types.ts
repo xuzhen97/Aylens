@@ -6,6 +6,8 @@
  * - 同步插件在进程 exit 时用 `JSON.parse(stdout.trim())` 解析**整个** stdout，
  *   因此 stdout 只允许出现这一个 JSON，任何日志必须走 stderr；
  * - `status` 只认 "success" / "error"。
+ *
+ * 这三个类型是 VCP **专属**的协议载体，不进共享核心。
  */
 
 export interface VcpRequest {
@@ -30,10 +32,8 @@ export interface VcpResponse {
   error?: string;
 }
 
-export interface PluginConfig {
-  baseUrl: string;
-  apiKey: string;
-  requestTimeoutMs: number;
-  /** 是否允许 LoginProviderAuth。默认 false：该命令会在 Runner 上拉起可见 Chrome。 */
-  allowAuthLogin: boolean;
-}
+/**
+ * 配置形状现由共享核心定义（两个宿主的配置语义必须一致）。
+ * 这里保留 `PluginConfig` 这个名字，免得改动调用点。
+ */
+export type { BridgeConfig as PluginConfig } from "../../bridge-core/src/client.js";

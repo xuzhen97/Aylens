@@ -158,6 +158,127 @@ describe("dispatchCommand", () => {
 		);
 	});
 
+	const extractResponse = {
+		requestId: "req-e1",
+		traceId: "trace-e1",
+		status: "completed",
+		items: [
+			{
+				index: 0,
+				url: "https://example.com",
+				status: "success",
+				document: { title: "甲页", markdown: "提取到的正文" },
+			},
+		],
+		meta: { providers: { tavily: { status: "success" } } },
+	};
+
+	it("Extract 接受描述与示例里写的 content 参数，并装配成请求体的 content.format", async () => {
+		// 回归背景：命令描述与示例一直写 `content`，而实现只读 `format`，
+		// 于是模型按描述发送的参数被**静默忽略**。这条用例把它钉住。
+		const { client, calls } = createStubClient(() => extractResponse);
+		const response = await dispatchCommand(client, {
+			command: "Extract",
+			urls: "https://example.com",
+			sources: "tavily",
+			content: "markdown",
+		});
+		expect(calls[0]?.path).toBe("/v1/extract");
+		expect(calls[0]?.body).toMatchObject({ content: { format: "markdown" } });
+		expect(response.status).toBe("success");
+		expect(textOf(response)).toContain("提取到的正文");
+	});
+
+	it("Extract 仍容忍旧的 format 参数名作为别名", async () => {
+		const { client, calls } = createStubClient(() => extractResponse);
+		await dispatchCommand(client, {
+			command: "Extract",
+			urls: "https://example.com",
+			sources: "tavily",
+			format: "text",
+		});
+		expect(calls[0]?.body).toMatchObject({ content: { format: "text" } });
+	});
+
+	it("Extract 未给格式时请求体里没有 content 字段", async () => {
+		const { client, calls } = createStubClient(() => extractResponse);
+		await dispatchCommand(client, { command: "Extract", urls: "https://example.com", sources: "tavily" });
+		expect(calls[0]?.body).not.toHaveProperty("content");
+	});
+
+	it("Extract 的 content 取值非法时抛 INVALID_REQUEST", async () => {
+		const { client } = createStubClient(() => extractResponse);
+		await expect(
+			dispatchCommand(client, {
+				command: "Extract",
+				urls: "https://example.com",
+				sources: "tavily",
+				content: "pdf",
+			}),
+		).rejects.toThrow(/content/);
+	});
+
+	it("Extract 缺 urls 或 sources 时抛 INVALID_REQUEST（不复用搜索的默认路由）", async () => {
+		const { client } = createStubClient(() => extractResponse);
+		await expect(dispatchCommand(client, { command: "Extract", sources: "tavily" })).rejects.toThrow(/urls/);
+		await expect(
+			dispatchCommand(client, { command: "Extract", urls: "https://example.com" }),
+		).rejects.toThrow(/sources/);
+	});
+
+	it("Extract 全部条目失败时抛 NO_RUNTIME", async () => {
+		const { client } = createStubClient(() => ({
+			requestId: "req-e2",
+			traceId: "trace-e2",
+			status: "failed",
+			items: [
+				{
+					index: 0,
+					url: "https://example.com",
+					status: "failed",
+					error: { code: "CONTENT_UNAVAILABLE", message: "上游原文", retryable: false },
+				},
+			],
+			meta: { providers: { tavily: { status: "failed", error: { code: "CONTENT_UNAVAILABLE" } } } },
+		}));
+		await expect(
+			dispatchCommand(client, { command: "Extract", urls: "https://example.com", sources: "tavily" }),
+		).rejects.toThrow(/没有拿到任何正文/);
+	});
+
+	it("Extract 部分成功时逐条渲染，失败项只回错误码不透传上游文案", async () => {
+		const { client } = createStubClient(() => ({
+			requestId: "req-e3",
+			traceId: "trace-e3",
+			status: "partial",
+			items: [
+				{
+					index: 0,
+					url: "https://a.example",
+					status: "success",
+					document: { title: "甲", markdown: "正文甲" },
+				},
+				{
+					index: 1,
+					url: "https://b.example",
+					status: "failed",
+					error: { code: "CONTENT_UNAVAILABLE", message: "上游原文不该出现", retryable: false },
+				},
+			],
+			meta: { providers: { tavily: { status: "partial" } } },
+		}));
+		const response = await dispatchCommand(client, {
+			command: "Extract",
+			urls: "https://a.example\nhttps://b.example",
+			sources: "tavily",
+		});
+		const text = textOf(response);
+		expect(text).toContain("成功 1 / 失败 1");
+		expect(text).toContain("正文甲");
+		expect(text).toContain("CONTENT_UNAVAILABLE");
+		expect(text).not.toContain("上游原文不该出现");
+	});
+
 	it("GetStatus 同时探测 health 与 ready，并在无 Runner 时给出警示", async () => {
 		const { client, calls } = createStubClient((call) =>
 			call.path === "/health" ? { status: "ok" } : { status: "ready", runtimes: 0 },
